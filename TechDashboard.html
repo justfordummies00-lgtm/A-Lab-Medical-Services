@@ -414,7 +414,7 @@ function techdash_renderQueue() {
 
   list.innerHTML = TDASH.filteredOrders.map(function(o) {
     var sc = statusColors[o.status] || '#64748b';
-    var statusLabel = o.status === 'IN_QUEUE' ? 'IN QUEUE' : (o.status||'').replace(/_/g,' ');
+    var statusLabel = o.status === 'IN_QUEUE' ? 'IN QUEUE' : o.status === 'FOR_RELEASE' ? 'COMPLETED' : (o.status||'').replace(/_/g,' ');
     var isActive = TDASH.selectedOrderId === o.order_id;
     var payStatus = o.payment_status || 'UNPAID';
     var payDot = payStatus !== 'PAID'
@@ -485,7 +485,7 @@ function techdash_selectOrder(orderId) {
   if (o) {
     var statusColors = { IN_QUEUE:'#0d9488', PAID:'#0d9488', IN_PROGRESS:'#2563eb', FOR_RELEASE:'#7c3aed', RELEASED:'#0060b0' };
     var sc = statusColors[o.status] || '#64748b';
-    var statusLabel = o.status === 'IN_QUEUE' ? 'IN QUEUE' : (o.status||'').replace(/_/g,' ');
+    var statusLabel = o.status === 'IN_QUEUE' ? 'IN QUEUE' : o.status === 'FOR_RELEASE' ? 'COMPLETED' : (o.status||'').replace(/_/g,' ');
     document.getElementById('panelOrderStatusBadge').innerHTML =
       '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:' + sc + '22;color:' + sc + ';">' + statusLabel + '</span>';
     var payColors = { UNPAID:'#dc2626', PARTIAL:'#ca8a04', PAID:'#16a34a' };
@@ -498,6 +498,20 @@ function techdash_selectOrder(orderId) {
       ? '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(14,165,233,.1);color:#0ea5e9;">🩻 X-Ray</span>'
       : '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(16,168,168,.1);color:var(--teal-600);">🔬 Lab</span>';
     if (o.status === 'FOR_RELEASE') document.getElementById('panelReleaseCard').style.display = '';
+    if (o.status === 'IN_QUEUE') {
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (r && r.success) {
+            o.status = 'IN_PROGRESS';
+            var inProg = TDASH.allOrders.find(function(x){ return x.order_id === o.order_id; });
+            if (inProg) inProg.status = 'IN_PROGRESS';
+            document.getElementById('panelOrderStatusBadge').innerHTML =
+              '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;background:#2563eb22;color:#2563eb;">IN PROGRESS</span>';
+            techdash_renderQueue();
+          }
+        })
+        .markOrderInProgress(TDASH.branchId, o.order_id);
+    }
   }
 
   google.script.run
@@ -527,20 +541,7 @@ function techdash_renderItemChips() {
       var icon = item.service_type === 'xray' ? '🩻 ' : '🔬 ';
       var check = isDone ? '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-left:auto;flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>' : '';
       
-      var isExtracted = !!item.extracted_at;
-      var isProcessed = !!item.processed_at;
-      var stepStr = '';
-      if (item.service_type === 'xray') {
-        if (!isExtracted) stepStr = 'Capture';
-        else if (!isProcessed) stepStr = 'Processing';
-        else if (!isDone) stepStr = 'Encoding';
-        else stepStr = 'For Release';
-      } else {
-        if (!isExtracted) stepStr = 'Extraction';
-        else if (!isProcessed) stepStr = 'Processing';
-        else if (!isDone) stepStr = 'Encoding';
-        else stepStr = 'For Release';
-      }
+      var stepStr = !isDone ? 'Encoding' : 'Completed';
 
       return '<div class="tech-tab-item ' + cls + '" onclick="techdash_selectItem(\'' + _e(item.order_item_id) + '\')">'
         + '<span style="margin-right:10px;font-size:16px;flex-shrink:0;opacity:' + (isSelected ? '1' : '0.6') + ';">' + icon + '</span>' 
@@ -569,17 +570,8 @@ function techdash_renderStepsOnly() {
   var stepsEl = document.getElementById('panelSteps');
   if (!stepsEl) return;
   
-  var extDone = !!item.extracted_at;
-  var procDone = !!item.processed_at;
-
-  var strExt = isXray ? 'Capture' : 'Extraction';
-  var descExt = isXray ? 'Taking the X-Ray image' : 'Specimen is collected from the patient';
-  var descProc = isXray ? 'Processing / developing the image' : 'Specimen is analyzed in the laboratory';
-
-  stepsEl.innerHTML = techdash_stepRow(1, strExt, descExt, extDone, item.order_item_id, 'extracted', isAllowed)
-    + techdash_stepRow(2, 'Processing', descProc, procDone, item.order_item_id, 'processed', extDone && isAllowed)
-    + '<div class="step-row" style="background:rgba(16,168,168,.04);border-color:rgba(16,168,168,.25);' + (procDone && isAllowed ? '' : 'opacity:0.5;pointer-events:none;') + '">'
-    + '<div class="step-num" style="background:var(--teal-600);color:#fff;">3</div>'
+  stepsEl.innerHTML = '<div class="step-row" style="background:rgba(16,168,168,.04);border-color:rgba(16,168,168,.25);">'
+    + '<div class="step-num" style="background:var(--teal-600);color:#fff;">1</div>'
     + '<div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--teal-600);">Encoding</div>'
     + '<div style="font-size:11px;color:var(--text-4);">' + (isXray ? 'Fill in the form below' : 'Fill in the results below') + '</div></div>'
     + (item.encoded_at ? '<span style="font-size:11px;font-weight:700;color:#16a34a;">✓ Done</span>' : '')
@@ -587,7 +579,7 @@ function techdash_renderStepsOnly() {
 
   var encSec = document.getElementById('panelEncodeSection');
   if (encSec) {
-    var enable = procDone && isAllowed;
+    var enable = isAllowed;
     encSec.style.opacity       = enable ? '1'    : '0.5';
     encSec.style.pointerEvents = enable ? 'auto' : 'none';
 

@@ -1350,6 +1350,30 @@ function _checkOrderProgress_(ss, sh, orderId, branchId) {
   }
 }
 
+// ── MARK ORDER IN PROGRESS ───────────────────────────────────
+function markOrderInProgress(branchId, orderId) {
+  try {
+    if (!branchId || !orderId) return { success: false, message: 'Missing parameters.' };
+    const ss = getOrderSS_(branchId);
+    const ordSh = ss.getSheetByName('LAB_ORDER');
+    if (!ordSh) return { success: false, message: 'LAB_ORDER sheet not found.' };
+    const ordLR = ordSh.getLastRow();
+    const data = ordSh.getRange(2, 1, ordLR - 1, 7).getValues();
+    const idx = data.findIndex(r => String(r[0]).trim() === orderId);
+    if (idx === -1) return { success: false, message: 'Order not found.' };
+    const current = String(data[idx][6]).trim();
+    if (current === 'IN_QUEUE') {
+      ordSh.getRange(idx + 2, 7, 1, 2).setValues([['IN_PROGRESS', new Date()]]);
+      writeBranchAudit_(ss, 'system', 'AUTO_STATUS', 'ORDER', orderId,
+        { status: 'IN_QUEUE' }, { status: 'IN_PROGRESS' });
+    }
+    return { success: true };
+  } catch (e) {
+    Logger.log('markOrderInProgress ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── GET ORDER RESULT ─────────────────────────────────────────
 function getOrderResult(branchId, orderId) {
   try {

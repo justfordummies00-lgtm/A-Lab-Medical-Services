@@ -118,7 +118,7 @@ function recdash_load() {
       var h = '';
       orders.forEach(function(o) {
         var color = STATUS_COLORS[o.status] || '#64748b';
-        var label = o.status.replace(/_/g,' ');
+        var label = o.status === 'FOR_RELEASE' ? 'Completed' : o.status.replace(/_/g,' ');
         h += '<tr>'
           + '<td><span style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--teal-600);">' + _e(o.order_no) + '</span></td>'
           + '<td style="font-size:13px;font-weight:600;color:var(--text-1);">' + _e(o.patient_name || '—') + '</td>'
