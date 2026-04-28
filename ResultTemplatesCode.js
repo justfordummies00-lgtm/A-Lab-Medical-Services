@@ -8,6 +8,83 @@ var XRAY_TEMPLATE_FOLDER   = 'A-Lab X-Ray Templates';
 var XRAY_TEMPLATE_FILENAME = 'xray_result_template.docx';
 var XRAY_RESULTS_FOLDER    = 'A-Lab Results';
 
+// If your Google Workspace blocks public link sharing, this will be skipped safely.
+var SHARE_GENERATED_SHEET_WITH_ANYONE_LINK = true;
+var SHARE_GENERATED_SHEET_PERMISSION = 'EDIT';
+
+// ── DRIVE ACCESS HELPERS ────────────────────────────────────
+function getEffectiveUserEmail_() {
+  try { return Session.getEffectiveUser().getEmail() || ''; } catch (e) { return ''; }
+}
+
+function isProbablyEmail_(value) {
+  value = String(value || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function extractDriveFileId_(urlOrId) {
+  var value = String(urlOrId || '').trim();
+  if (!value) return '';
+  if (/^[A-Za-z0-9_-]{10,}$/.test(value) && value.indexOf('/') === -1) return value;
+  var patterns = [
+    /\/d\/([A-Za-z0-9_-]{10,})/,
+    /[?&]id=([A-Za-z0-9_-]{10,})/,
+    /\/folders\/([A-Za-z0-9_-]{10,})/
+  ];
+  for (var i = 0; i < patterns.length; i++) {
+    var m = value.match(patterns[i]);
+    if (m && m[1]) return m[1];
+  }
+  return '';
+}
+
+function applyGeneratedSheetSharing_(fileCopy, encodedBy) {
+  var warnings = [];
+  try {
+    var email = String(encodedBy || '').trim();
+    if (isProbablyEmail_(email)) fileCopy.addEditor(email);
+  } catch (editorErr) {
+    var msg = 'Could not add editor to generated sheet: ' + editorErr.message;
+    Logger.log(msg); warnings.push(msg);
+  }
+  if (!SHARE_GENERATED_SHEET_WITH_ANYONE_LINK) return warnings.join(' ');
+  try {
+    var permission = String(SHARE_GENERATED_SHEET_PERMISSION || 'EDIT').toUpperCase() === 'VIEW'
+      ? DriveApp.Permission.VIEW : DriveApp.Permission.EDIT;
+    fileCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, permission);
+  } catch (shareErr) {
+    Logger.log('Could not set ANYONE_WITH_LINK sharing: ' + shareErr.message);
+    try {
+      if (String(SHARE_GENERATED_SHEET_PERMISSION || 'EDIT').toUpperCase() !== 'VIEW') {
+        fileCopy.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        var fallbackMsg = 'Anyone-with-link EDIT was blocked, VIEW applied. Original error: ' + shareErr.message;
+        Logger.log(fallbackMsg); warnings.push(fallbackMsg);
+      } else {
+        warnings.push('Anyone-with-link VIEW sharing was blocked. File generated but link-sharing not changed. ' + shareErr.message);
+      }
+    } catch (viewErr) {
+      var skipMsg = 'Google Drive sharing skipped (Workspace restriction). File generated, link-sharing not changed. Error: ' + viewErr.message;
+      Logger.log(skipMsg); warnings.push(skipMsg);
+    }
+  }
+  return warnings.join(' ');
+}
+
+function getResultItemRowByType_(itemsSh, orderId, orderItemId, resultTypes) {
+  if (!itemsSh || itemsSh.getLastRow() < 2) return -1;
+  var typeSet = {};
+  (resultTypes || []).forEach(function (t) { typeSet[String(t || '').trim()] = true; });
+  if (Object.keys(typeSet).length === 0) return -1;
+  var numCols = Math.max(itemsSh.getLastColumn(), 6);
+  var rows = itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, numCols).getValues();
+  var idx = rows.findIndex(function (r) {
+    return String(r[1]).trim() === String(orderId).trim() &&
+           String(r[2]).trim() === String(orderItemId).trim() &&
+           typeSet[String(r[5] || '').trim()];
+  });
+  return idx === -1 ? -1 : idx + 2;
+}
+
 // ── TEMPLATE CONFIG (sections) ──────────────────────────────
 function getXrayTemplateConfig() {
   try {
@@ -27,6 +104,20 @@ function saveXrayTemplateConfig(config) {
   try {
     var user = Session.getActiveUser().getEmail() || 'system';
     saveSystemSetting('xray_template_config', JSON.stringify(config), user);
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function getLabEncodingMode() {
+  return getSettingValue_('lab_encoding_mode', 'params');
+}
+
+function saveLabEncodingMode(mode) {
+  try {
+    var user = Session.getActiveUser().getEmail() || 'system';
+    saveSystemSetting('lab_encoding_mode', mode === 'sheet_template' ? 'sheet_template' : 'params', user);
     return { success: true };
   } catch (e) {
     return { success: false, message: e.message };
@@ -303,7 +394,8 @@ function generateXrayResult(payload) {
   // payload: { patient, procedure, clinicalData, findings, impression,
   //            encodedBy, branchId, orderId, orderItemId, orderNo, reportDate }
   try {
-    var templateDocId = getSettingValue_('xray_template_doc_id', '');
+    var rawTemplateDocId = getSettingValue_('xray_template_doc_id', '');
+    var templateDocId = extractDriveFileId_(rawTemplateDocId) || String(rawTemplateDocId || '').trim();
     if (!templateDocId) {
       return {
         success: false,
@@ -311,7 +403,16 @@ function generateXrayResult(payload) {
       };
     }
 
-    var templateFile = DriveApp.getFileById(templateDocId);
+    var templateFile;
+    try {
+      templateFile = DriveApp.getFileById(templateDocId);
+    } catch (accessErr) {
+      return {
+        success: false,
+        message: 'Cannot access the X-Ray template Google Doc. Share it with the script account: ' +
+          getEffectiveUserEmail_() + '. Error: ' + accessErr.message
+      };
+    }
     if (templateFile.getMimeType() !== MimeType.GOOGLE_DOCS) {
       return {
         success: false,
@@ -377,6 +478,7 @@ function generateXrayResult(payload) {
     try {
       var drvCfg = getDriveFolderConfig(payload.branchId);
       var rootId = drvCfg && drvCfg.root_folder_id ? drvCfg.root_folder_id.trim() : '';
+      rootId = extractDriveFileId_(rootId) || rootId;
       if (rootId) {
         var rootFolder = DriveApp.getFolderById(rootId);
         var folderName = p.name
@@ -395,7 +497,7 @@ function generateXrayResult(payload) {
     var docxFile = exportDocx_(docCopy.getId(), baseName, targetFolder);
 
     // Trash temp Google Doc copy
-    docCopy.setTrashed(true);
+    try { docCopy.setTrashed(true); } catch (trashErr) { Logger.log('Could not trash temp X-Ray doc: ' + trashErr.message); }
 
     return {
       success: true,
@@ -495,17 +597,10 @@ function saveXrayResultAndPdf(branchId, orderId, orderItemId, servId, servName,
 
     // 5) Save to RESULT_ITEMS (use XRAY_DOCX)
     var itemsSh = _getResultItemsSheet_(ss);
-    var lr = itemsSh.getLastRow();
-    var existIdx = -1;
+    var existingRow = getResultItemRowByType_(itemsSh, orderId, orderItemId, ['XRAY_DOCX', 'XRAY_PDF']);
 
-    if (lr >= 2) {
-      existIdx = itemsSh.getRange(2, 1, lr - 1, 3).getValues()
-        .findIndex(function (r) { return String(r[1]).trim() === orderId && String(r[2]).trim() === orderItemId; });
-    }
-
-    if (existIdx !== -1) {
-      // cols 5-14: url, type, '', '', encodedBy, timestamp, result_type, clinicalData, findings, impression
-      itemsSh.getRange(existIdx + 2, 5, 1, 10)
+    if (existingRow !== -1) {
+      itemsSh.getRange(existingRow, 5, 1, 10)
         .setValues([[gen.docxUrl, 'XRAY_DOCX', '', '', encodedBy, new Date(), 'xray', clinicalData || '', findings || '', impression || '']]);
     } else {
       var rid = 'RI-' + Math.random().toString(16).substr(2, 8).toUpperCase();
@@ -554,7 +649,8 @@ function saveXrayResultAndPdf(branchId, orderId, orderItemId, servId, servName,
 function generateLabResult(payload) {
   // payload: { patient, serviceName, params:[...], encodedBy, branchId, orderId, orderItemId, orderNo, reportDate }
   try {
-    var templateDocId = getSettingValue_('lab_template_doc_id', '');
+    var rawTemplateDocId = getSettingValue_('lab_template_doc_id', '');
+    var templateDocId = extractDriveFileId_(rawTemplateDocId) || String(rawTemplateDocId || '').trim();
     if (!templateDocId) {
       return {
         success: false,
@@ -562,7 +658,16 @@ function generateLabResult(payload) {
       };
     }
 
-    var templateFile = DriveApp.getFileById(templateDocId);
+    var templateFile;
+    try {
+      templateFile = DriveApp.getFileById(templateDocId);
+    } catch (accessErr) {
+      return {
+        success: false,
+        message: 'Cannot access the Lab template Google Doc. Share it with the script account: ' +
+          getEffectiveUserEmail_() + '. Error: ' + accessErr.message
+      };
+    }
     if (templateFile.getMimeType() !== MimeType.GOOGLE_DOCS) {
       return {
         success: false,
@@ -742,6 +847,7 @@ function generateLabResult(payload) {
     try {
       var drvCfg = getDriveFolderConfig(payload.branchId);
       var rootId = drvCfg && drvCfg.root_folder_id ? drvCfg.root_folder_id.trim() : '';
+      rootId = extractDriveFileId_(rootId) || rootId;
       if (rootId) {
         var rootFolder = DriveApp.getFolderById(rootId);
         var folderName = p.name
@@ -760,7 +866,7 @@ function generateLabResult(payload) {
     var docxFile = exportDocx_(docCopy.getId(), baseName, targetFolder);
 
     // Trash temporary Google Doc copy
-    docCopy.setTrashed(true);
+    try { docCopy.setTrashed(true); } catch (trashErr) { Logger.log('Could not trash temp Lab doc: ' + trashErr.message); }
 
     return {
       success: true,
@@ -775,6 +881,182 @@ function generateLabResult(payload) {
 }
 
 // ── SAVE LAB ENCODING: generate DOCX → record in RESULT_ITEMS ──
+// ── GENERATE SHEET TEMPLATE FOR PATIENT ───────────────────────
+function generateSheetTemplate(branchId, orderId, orderItemId, encodedBy) {
+  try {
+    if (!branchId || !orderId || !orderItemId)
+      return { success: false, message: 'Missing required parameters.' };
+
+    var ss     = getOrderSS_(branchId);
+    var ordSh  = ss.getSheetByName('LAB_ORDER');
+    var itemSh = ss.getSheetByName('LAB_ORDER_ITEM');
+
+    // ── Get order + patient info ──────────────────────────────
+    var patient = {}, orderDate = '', orderNo = '', doctorName = '', servId = '', servName = '';
+    if (ordSh && ordSh.getLastRow() >= 2) {
+      var oCols = Math.max(ordSh.getLastColumn(), 20);
+      var ordRow = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, oCols).getValues()
+        .find(function(r) { return String(r[0]).trim() === orderId; });
+      if (ordRow) {
+        patient.id   = String(ordRow[3] || '').trim();
+        orderDate    = ordRow[4] ? Utilities.formatDate(new Date(ordRow[4]), Session.getScriptTimeZone(), 'MMMM dd, yyyy') : '';
+        orderNo      = String(ordRow[1] || '').trim();
+        doctorName   = String(ordRow[12] || '').trim();
+      }
+    }
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      var iCols = Math.max(itemSh.getLastColumn(), 10);
+      var itemRow = itemSh.getRange(2, 1, itemSh.getLastRow() - 1, iCols).getValues()
+        .find(function(r) { return String(r[0]).trim() === orderItemId && String(r[1]).trim() === orderId; });
+      if (itemRow) {
+        servId   = String(itemRow[2] || '').trim();
+        servName = String(itemRow[4] || '').trim();
+      }
+    }
+
+    // ── Get patient demographics ──────────────────────────────
+    var mss = getSS_();
+    var patSh = mss.getSheetByName('Patients_' + branchId) ||
+                mss.getSheetByName('Patients') ||
+                ss.getSheetByName('Patients');
+    if (patSh && patient.id && patSh.getLastRow() >= 2) {
+      var pCols = Math.max(patSh.getLastColumn(), 8);
+      var patRow = patSh.getRange(2, 1, patSh.getLastRow() - 1, pCols).getValues()
+        .find(function(r) { return String(r[0]).trim() === patient.id; });
+      if (patRow) {
+        patient.name = (String(patRow[1] || '').trim() + ', ' + String(patRow[2] || '').trim()).replace(/,\s*$/, '').trim();
+        patient.sex  = String(patRow[4] || '').trim();
+        patient.dob  = patRow[5];
+        if (patient.dob) {
+          var diff = Date.now() - new Date(patient.dob).getTime();
+          patient.age  = Math.floor(diff / (365.25 * 24 * 60 * 60 * 1000)) + ' yrs';
+        }
+      }
+    }
+
+    // ── Get service template URL ──────────────────────────────
+    var templateUrl = '';
+    var labServSh = mss.getSheetByName('Lab_Services') || mss.getSheetByName('LAB_SERVICES');
+    if (labServSh && servId && labServSh.getLastRow() >= 2) {
+      var lRows = labServSh.getRange(2, 1, labServSh.getLastRow() - 1, 12).getValues();
+      var lRow = lRows.find(function(r) { return String(r[0]).trim() === servId; });
+      if (lRow) templateUrl = String(lRow[11] || '').trim();
+    }
+    if (!templateUrl) return { success: false, message: 'No sheet template configured for this service. Please add a template URL in Branch Settings → MedTech Sheet Templates.' };
+
+    // ── Extract file ID from URL ──────────────────────────────
+    var fileId = extractDriveFileId_(templateUrl);
+    if (!fileId) return { success: false, message: 'Invalid template URL format. Please use a valid Google Sheets link.' };
+
+    // ── Copy the template ─────────────────────────────────────
+    var templateFile;
+    try {
+      templateFile = DriveApp.getFileById(fileId);
+    } catch(accessErr) {
+      return { success: false, message: 'Cannot access the service template file. Share it with the script account: ' +
+        getEffectiveUserEmail_() + ' (at least Viewer access), then try again. Error: ' + accessErr.message };
+    }
+    if (templateFile.getMimeType() !== MimeType.GOOGLE_SHEETS) {
+      return { success: false, message: 'The service template must be a Google Sheet. Open the file and convert/save it as Google Sheets, then use that Google Sheets link.' };
+    }
+    var copyName = (patient.name || patient.id || 'Patient') + ' — ' + (servName || servId);
+
+    // ── Find / create patient folder ──────────────────────────
+    var targetFolder = null;
+    var warnings = [];
+    try {
+      var drvCfg = getDriveFolderConfig(branchId);
+      var rootId = drvCfg && drvCfg.root_folder_id ? drvCfg.root_folder_id.trim() : '';
+      rootId = extractDriveFileId_(rootId) || rootId;
+      if (rootId) {
+        var rootFolder = DriveApp.getFolderById(rootId);
+        var folderName = patient.name ? patient.name.trim() + ' - ' + (patient.id || '') : 'Patient - ' + (patient.id || '');
+        var fq = rootFolder.getFoldersByName(folderName);
+        targetFolder = fq.hasNext() ? fq.next() : rootFolder.createFolder(folderName);
+      }
+    } catch(folderErr) {
+      var folderMsg = 'Could not access/create patient folder. File copied to script owner My Drive. Error: ' + folderErr.message;
+      Logger.log(folderMsg); warnings.push(folderMsg);
+    }
+
+    var fileCopy;
+    try {
+      fileCopy = targetFolder ? templateFile.makeCopy(copyName, targetFolder) : templateFile.makeCopy(copyName);
+    } catch(copyErr) {
+      return { success: false, message: 'Cannot copy the service template. Make sure the script account has access. Script account: ' +
+        getEffectiveUserEmail_() + '. Error: ' + copyErr.message };
+    }
+
+    var spreadsheet;
+    try {
+      spreadsheet = SpreadsheetApp.openById(fileCopy.getId());
+    } catch(openErr) {
+      try { fileCopy.setTrashed(true); } catch(trashErr) {}
+      return { success: false, message: 'The copied template could not be opened as a Google Sheet. Error: ' + openErr.message };
+    }
+
+    // ── Replace placeholders across all sheets ────────────────
+    var todayFormatted = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMMM dd, yyyy');
+    var placeholders = {
+      '{{PATIENT_NAME}}' : patient.name      || '',
+      '{{PATIENT_ID}}'   : patient.id        || '',
+      '{{AGE}}'          : patient.age       || '',
+      '{{SEX}}'          : patient.sex       || '',
+      '{{BIRTHDATE}}'    : patient.dob ? Utilities.formatDate(new Date(patient.dob), Session.getScriptTimeZone(), 'MM/dd/yyyy') : '',
+      '{{ORDER_NO}}'     : orderNo           || '',
+      '{{ORDER_DATE}}'   : orderDate         || '',
+      '{{DOCTOR}}'       : doctorName        || '',
+      '{{SERVICE}}'      : servName          || '',
+      '{{DATE_TODAY}}'   : todayFormatted,
+      '{{DATE}}'         : todayFormatted
+    };
+    spreadsheet.getSheets().forEach(function(sheet) {
+      Object.keys(placeholders).forEach(function(key) {
+        sheet.createTextFinder(key).replaceAllWith(placeholders[key]);
+      });
+    });
+    SpreadsheetApp.flush();
+
+    // ── Set sharing safely (won't fail if Workspace blocks it) ─
+    var sharingWarning = applyGeneratedSheetSharing_(fileCopy, encodedBy);
+    if (sharingWarning) warnings.push(sharingWarning);
+    var sheetUrl = fileCopy.getUrl();
+
+    // ── Save to RESULT_ITEMS ──────────────────────────────────
+    var riSh = _getResultItemsSheet_(ss);
+    var riLr = riSh.getLastRow();
+    var resultItemId = 'RI-' + Math.random().toString(16).substr(2, 8).toUpperCase();
+    var now = new Date();
+    // Check for existing SHEET_TEMPLATE row
+    var existingRowIdx = -1;
+    if (riLr >= 2) {
+      var riRows = riSh.getRange(2, 1, riLr - 1, 6).getValues();
+      existingRowIdx = riRows.findIndex(function(r) {
+        return String(r[1]).trim() === orderId &&
+               String(r[2]).trim() === orderItemId &&
+               String(r[5]).trim() === 'SHEET_TEMPLATE';
+      });
+    }
+    if (existingRowIdx !== -1) {
+      var shRow = existingRowIdx + 2;
+      riSh.getRange(shRow, 5).setValue(sheetUrl);
+      riSh.getRange(shRow, 9).setValue(encodedBy);
+      riSh.getRange(shRow, 10).setValue(now);
+    } else {
+      riSh.appendRow([resultItemId, orderId, orderItemId, servName, sheetUrl, 'SHEET_TEMPLATE', '', '', encodedBy, now]);
+    }
+
+    Logger.log('generateSheetTemplate: ' + sheetUrl);
+    var response = { success: true, sheetUrl: sheetUrl };
+    if (warnings.length) response.warning = warnings.join(' ');
+    return response;
+
+  } catch (e) {
+    Logger.log('generateSheetTemplate ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 function saveLabResultAndPdf(branchId, orderId, orderItemId, servId, servName, params, encodedBy, orderNo) {
   // NOTE: Keeping function name for compatibility, but it now saves DOCX.
   try {
@@ -858,16 +1140,10 @@ function saveLabResultAndPdf(branchId, orderId, orderItemId, servId, servName, p
 
     // Save URL to RESULT_ITEMS (unit=LAB_DOCX)
     var itemsSh = _getResultItemsSheet_(ss);
-    var lr = itemsSh.getLastRow();
-    var existIdx = -1;
+    var existingRow = getResultItemRowByType_(itemsSh, orderId, orderItemId, ['LAB_DOCX', 'LAB_PDF']);
 
-    if (lr >= 2) {
-      existIdx = itemsSh.getRange(2, 1, lr - 1, 3).getValues()
-        .findIndex(function (r) { return String(r[1]).trim() === orderId && String(r[2]).trim() === orderItemId; });
-    }
-
-    if (existIdx !== -1) {
-      itemsSh.getRange(existIdx + 2, 5, 1, 6)
+    if (existingRow !== -1) {
+      itemsSh.getRange(existingRow, 5, 1, 6)
         .setValues([[gen.docxUrl, 'LAB_DOCX', '', '', encodedBy, new Date()]]);
     } else {
       var rid = 'RI-' + Math.random().toString(16).substr(2, 8).toUpperCase();
@@ -908,7 +1184,9 @@ function deleteItemResult(branchId, orderId, orderItemId) {
     var numCols = Math.max(rSh.getLastColumn(), 14);
     var rows = rSh.getRange(2, 1, rSh.getLastRow() - 1, numCols).getValues();
     var idx = rows.findIndex(function (r) {
-      return String(r[1]).trim() === orderId && String(r[2]).trim() === orderItemId;
+      return String(r[1]).trim() === orderId &&
+             String(r[2]).trim() === orderItemId &&
+             String(r[5] || '').trim() !== 'SHEET_TEMPLATE';
     });
     if (idx === -1) return { success: false, message: 'Result not found.' };
 
@@ -921,8 +1199,8 @@ function deleteItemResult(branchId, orderId, orderItemId) {
     // Trash the Drive file
     if (fileUrl) {
       try {
-        var idMatch = fileUrl.match(/(?:\/d\/|[?&]id=)([-\w]{10,})/);
-        if (idMatch) DriveApp.getFileById(idMatch[1]).setTrashed(true);
+        var fileIdToTrash = extractDriveFileId_(fileUrl);
+        if (fileIdToTrash) DriveApp.getFileById(fileIdToTrash).setTrashed(true);
       } catch (e) {
         Logger.log('deleteItemResult: could not trash file: ' + e.message);
       }

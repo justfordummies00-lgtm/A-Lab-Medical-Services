@@ -47,12 +47,19 @@ function getPatientSheet_(branchId) {
     sh.getRange(2, 6, 1000, 1).setNumberFormat('yyyy-mm-dd');
     sh.getRange(2, 12, 1000, 2).setNumberFormat('yyyy-mm-dd hh:mm:ss');
   } else {
-    // Migration: Add discount_id_no and is_4ps if missing
+    // Migration: Add missing columns
     if (sh.getLastColumn() < 16) {
       if (sh.getLastColumn() < 15) {
         sh.getRange(1, 15, 1, 2).setValues([['is_4ps', 'discount_id_no']]).setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
       } else {
         sh.getRange(1, 16).setValue('discount_id_no').setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
+      }
+    }
+    if (sh.getLastColumn() < 18) {
+      if (sh.getLastColumn() < 17) {
+        sh.getRange(1, 17, 1, 2).setValues([['senior_citizen_id', 'pwd_id']]).setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
+      } else {
+        sh.getRange(1, 18).setValue('pwd_id').setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
       }
     }
   }
@@ -94,7 +101,7 @@ function getPatients(branchId) {
     const discMap = buildDiscountMap_();
 
     const data = lr < 2 ? [] :
-      sh.getRange(2, 1, lr-1, Math.max(sh.getLastColumn(), 16)).getValues()
+      sh.getRange(2, 1, lr-1, Math.max(sh.getLastColumn(), 18)).getValues()
         .filter(r => r[0] && String(r[0]).trim())
         .map(r => {
           const discIds  = String(r[10]||'').trim();
@@ -121,7 +128,9 @@ function getPatients(branchId) {
             updated_at:        r[12] ? new Date(r[12]).toISOString() : '',
             home_branch_id:    String(r[13]||'').trim(),
             is_4ps:            r[14]==1?1:0,
-            discount_id_no:    String(r[15]||'').trim()
+            discount_id_no:    String(r[15]||'').trim(),
+            senior_citizen_id: String(r[16]||'').trim(),
+            pwd_id:            String(r[17]||'').trim()
           };
         });
 
@@ -166,7 +175,9 @@ function createPatient(branchId, payload) {
       now, now,
       branchId,             // home_branch_id = enrolling branch
       payload.is_4ps ? 1 : 0,
-      (payload.discount_id_no || '').trim()
+      '',                                           // discount_id_no (legacy, kept for compat)
+      (payload.senior_citizen_id || '').trim(),
+      (payload.pwd_id            || '').trim()
     ]);
 
     writeAuditLog_('PATIENT_CREATE', { branch_id: branchId, patient_id: patId, name: payload.last_name + ', ' + payload.first_name });
@@ -219,7 +230,7 @@ function updatePatient(branchId, payload) {
     const createdAt   = existRow[11] || new Date();
     const homeBranch  = String(existRow[13]||branchId).trim(); // preserve home branch
 
-    sh.getRange(sheetRow, 2, 1, 15).setValues([[
+    sh.getRange(sheetRow, 2, 1, 17).setValues([[
       payload.last_name.trim(),
       payload.first_name.trim(),
       (payload.middle_name    || '').trim(),
@@ -234,7 +245,9 @@ function updatePatient(branchId, payload) {
       new Date(),            // updated_at
       homeBranch,
       payload.is_4ps ? 1 : 0,
-      (payload.discount_id_no || '').trim()
+      '',                                           // discount_id_no (legacy)
+      (payload.senior_citizen_id || '').trim(),
+      (payload.pwd_id            || '').trim()
     ]]);
 
     writeAuditLog_('PATIENT_UPDATE', { branch_id: branchId, patient_id: payload.patient_id });

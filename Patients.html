@@ -156,10 +156,15 @@
                 </div>
                 <div style="font-size:11px;color:var(--text-4);margin-top:4px;font-family:var(--mono);" id="patDiscCount">0 discounts selected</div>
                 
-                <!-- Discount ID Number Input (Hidden by default) -->
-                <div id="patDiscIdWrap" style="display:none;margin-top:12px;">
-                  <label class="f-label" style="font-size:11px;font-weight:700;color:var(--teal-700);text-transform:uppercase;">Discount ID Number <span style="color:var(--danger);">*</span></label>
-                  <input type="text" id="patFldDiscId" class="f-inp" placeholder="Enter Senior Citizen / PWD ID" style="border-color:var(--teal-300);background:var(--teal-50);">
+                <!-- Senior Citizen ID (shown when SC discount selected) -->
+                <div id="patScIdWrap" style="display:none;margin-top:10px;">
+                  <label class="f-label" style="font-size:11px;font-weight:700;color:var(--teal-700);text-transform:uppercase;">Senior Citizen ID <span style="color:var(--danger);">*</span></label>
+                  <input type="text" id="patFldScId" class="f-inp" placeholder="Enter Senior Citizen ID No." style="border-color:var(--teal-300);background:var(--teal-50);">
+                </div>
+                <!-- PWD ID (shown when PWD discount selected) -->
+                <div id="patPwdIdWrap" style="display:none;margin-top:10px;">
+                  <label class="f-label" style="font-size:11px;font-weight:700;color:var(--teal-700);text-transform:uppercase;">PWD ID <span style="color:var(--danger);">*</span></label>
+                  <input type="text" id="patFldPwdId" class="f-inp" placeholder="Enter PWD ID No." style="border-color:var(--teal-300);background:var(--teal-50);">
                 </div>
               </div>
 
@@ -482,6 +487,8 @@ function pat_render() {
       + '</td>'
       + '<td style="font-size:12px;color:var(--text-2);">'
         + (p.discounts_display ? '<span style="font-size:11px;">' + _e(p.discounts_display) + '</span>' : '<span style="color:var(--text-4);">—</span>')
+        + (p.senior_citizen_id ? ' <span class="badge" style="background:rgba(245,158,11,.12);color:#b45309;font-size:10px;">SC ID</span>' : '')
+        + (p.pwd_id ? ' <span class="badge" style="background:rgba(124,58,237,.12);color:#7c3aed;font-size:10px;">PWD ID</span>' : '')
       + '</td>'
       + '<td style="text-align:center;">'
         + '<div style="display:flex;gap:5px;justify-content:center;">'
@@ -527,7 +534,7 @@ function pat_renderDiscounts(selectedIds) {
     var checked  = selectedIds.indexOf(d.discount_id) !== -1;
     var valDisp  = d.type === 'percentage' ? d.value + '%' : '₱' + d.value;
     return '<label style="display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--border);cursor:pointer;" onchange="pat_updateDiscCount()">'
-      + '<input type="checkbox" value="' + _e(d.discount_id) + '" ' + (checked ? 'checked' : '') + ' style="accent-color:var(--teal-600);width:15px;height:15px;flex-shrink:0;">'
+      + '<input type="checkbox" value="' + _e(d.discount_id) + '" data-name="' + _e((d.discount_name||'').toLowerCase()) + '" ' + (checked ? 'checked' : '') + ' style="accent-color:var(--teal-600);width:15px;height:15px;flex-shrink:0;">'
       + '<div style="flex:1;">'
         + '<div style="font-size:13px;font-weight:700;color:var(--text-1);">' + _e(d.discount_name) + '</div>'
       + '</div>'
@@ -541,15 +548,18 @@ function pat_updateDiscCount() {
   var cbs = document.querySelectorAll('#patDiscountList input[type=checkbox]:checked');
   var el  = document.getElementById('patDiscCount');
   if (el) el.textContent = cbs.length + ' discount' + (cbs.length !== 1 ? 's' : '') + ' selected';
-  
-  var idWrap = document.getElementById('patDiscIdWrap');
-  if (idWrap) {
-    if (cbs.length > 0) {
-      idWrap.style.display = 'block';
-    } else {
-      idWrap.style.display = 'none';
-    }
-  }
+
+  var hasSc = false, hasPwd = false;
+  cbs.forEach(function(cb) {
+    var name = (cb.dataset.name || '').toLowerCase();
+    if (name.indexOf('senior') !== -1) hasSc = true;
+    if (name.indexOf('pwd') !== -1 || name.indexOf('disability') !== -1) hasPwd = true;
+  });
+
+  var scWrap  = document.getElementById('patScIdWrap');
+  var pwdWrap = document.getElementById('patPwdIdWrap');
+  if (scWrap)  scWrap.style.display  = hasSc  ? 'block' : 'none';
+  if (pwdWrap) pwdWrap.style.display = hasPwd ? 'block' : 'none';
 }
 
 function pat_getSelectedDiscounts() {
@@ -575,8 +585,10 @@ function pat_openModal() {
   document.getElementById('patFldAddress').value = '';
   document.getElementById('patFldPhilPin').value = '';
   document.getElementById('patFld4ps').checked   = false;
-  var idFld = document.getElementById('patFldDiscId');
-  if (idFld) idFld.value = '';
+  var scFld  = document.getElementById('patFldScId');
+  var pwdFld = document.getElementById('patFldPwdId');
+  if (scFld)  scFld.value  = '';
+  if (pwdFld) pwdFld.value = '';
   pat_renderDiscounts([]);
   pat_hideModalErr();
   document.getElementById('patModal').style.display = 'flex';
@@ -603,8 +615,10 @@ function pat_openEdit(id) {
   document.getElementById('patFld4ps').checked      = p.is_4ps == 1;
   var selDiscIds = p.discount_ids ? p.discount_ids.split(',').map(function(s){ return s.trim(); }) : [];
   pat_renderDiscounts(selDiscIds);
-  var idFld = document.getElementById('patFldDiscId');
-  if (idFld) idFld.value = p.discount_id_no || '';
+  var scFld  = document.getElementById('patFldScId');
+  var pwdFld = document.getElementById('patFldPwdId');
+  if (scFld)  scFld.value  = p.senior_citizen_id || '';
+  if (pwdFld) pwdFld.value = p.pwd_id            || '';
   pat_hideModalErr();
   document.getElementById('patModal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('patFldLast').focus(); }, 80);
@@ -629,15 +643,18 @@ function pat_save() {
   var address = document.getElementById('patFldAddress').value.trim();
   var philPin  = document.getElementById('patFldPhilPin').value.trim();
   var is4ps    = document.getElementById('patFld4ps').checked ? 1 : 0;
-  var discIdNo = '';
-  var idFld = document.getElementById('patFldDiscId');
-  if (idFld && document.getElementById('patDiscIdWrap').style.display !== 'none') {
-    discIdNo = idFld.value.trim();
-    if (!discIdNo && document.querySelectorAll('#patDiscountList input[type=checkbox]:checked').length > 0) {
-      pat_showModalErr('Discount ID Number is required for selected discounts.');
-      idFld.focus();
-      return;
-    }
+  var scId = '', pwdId = '';
+  var scWrap  = document.getElementById('patScIdWrap');
+  var pwdWrap = document.getElementById('patPwdIdWrap');
+  var scFld   = document.getElementById('patFldScId');
+  var pwdFld  = document.getElementById('patFldPwdId');
+  if (scFld && scWrap && scWrap.style.display !== 'none') {
+    scId = scFld.value.trim();
+    if (!scId) { pat_showModalErr('Senior Citizen ID is required.'); scFld.focus(); return; }
+  }
+  if (pwdFld && pwdWrap && pwdWrap.style.display !== 'none') {
+    pwdId = pwdFld.value.trim();
+    if (!pwdId) { pat_showModalErr('PWD ID is required.'); pwdFld.focus(); return; }
   }
   var discIds      = pat_getSelectedDiscounts().join(',');
   var isEdit       = !!PAT.editingId;
@@ -661,7 +678,8 @@ function pat_save() {
     email: email, address: address,
     philhealth_pin: philPin,
     discount_ids: discIds,
-    discount_id_no: discIdNo,
+    senior_citizen_id: scId,
+    pwd_id: pwdId,
     is_4ps: is4ps
   };
 
@@ -673,14 +691,14 @@ function pat_save() {
       last_name: last, first_name: first, middle_name: middle, sex: sex,
       dob: dob, contact: contact, email: email, address: address,
       philhealth_pin: philPin, is_4ps: is4ps,
-      discount_ids: discIds, discount_id_no: discIdNo, discounts_display: discDisp
+      discount_ids: discIds, senior_citizen_id: scId, pwd_id: pwdId, discounts_display: discDisp
     });
   } else {
     PAT.all.unshift({
       patient_id: 'PAT-PENDING', last_name: last, first_name: first, middle_name: middle,
       sex: sex, dob: dob, contact: contact, email: email, address: address,
       philhealth_pin: philPin, is_4ps: is4ps,
-      discount_ids: discIds, discount_id_no: discIdNo, discounts_display: discDisp
+      discount_ids: discIds, senior_citizen_id: scId, pwd_id: pwdId, discounts_display: discDisp
     });
   }
 
@@ -706,6 +724,10 @@ function pat_save() {
           document.getElementById('patFldAddress').value = address;
           document.getElementById('patFldPhilPin').value = philPin;
           pat_renderDiscounts(discIds ? discIds.split(',') : []);
+          var scR  = document.getElementById('patFldScId');
+          var pwdR = document.getElementById('patFldPwdId');
+          if (scR)  scR.value  = scId;
+          if (pwdR) pwdR.value = pwdId;
           pat_showModalErr(r.message || 'Failed.');
         }, 200);
         return;
@@ -777,6 +799,8 @@ function pat_openView(id) {
     { label: 'PhilHealth',   value: p.philhealth_pin ? '✓ Member — ' + p.philhealth_pin : '✗ Not a member' },
     { label: 'Discounts',    value: p.discounts_display || '—' }
   ];
+  if (p.senior_citizen_id) fields.push({ label: 'Senior Citizen ID', value: p.senior_citizen_id, mono: true });
+  if (p.pwd_id)            fields.push({ label: 'PWD ID',            value: p.pwd_id,            mono: true });
 
   document.getElementById('patViewBody').innerHTML = fields.map(function(f) {
     return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">'

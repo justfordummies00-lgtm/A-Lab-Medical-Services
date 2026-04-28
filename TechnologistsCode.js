@@ -154,8 +154,8 @@ function updateTechnologist(payload) {
     const lr  = sh.getLastRow();
     if (lr < 2) return { success: false, message: 'Technologist not found.' };
 
-    // Batch read all rows
-    const allRows = sh.getRange(2,1,lr-1,12).getValues();
+    // Batch read all rows (14 cols: A–N)
+    const allRows = sh.getRange(2,1,lr-1,14).getValues();
     const rowIdx  = allRows.findIndex(r => String(r[0]).trim() === payload.tech_id.trim());
     if (rowIdx === -1) return { success: false, message: 'Technologist not found.' };
 
@@ -171,7 +171,7 @@ function updateTechnologist(payload) {
     const existPass = String(existRow[8]||'').trim(); // col I
     const password  = payload.password ? payload.password.trim() : existPass;
 
-    sh.getRange(rowIdx+2, 2, 1, 11).setValues([[
+    sh.getRange(rowIdx+2, 2, 1, 13).setValues([[
       payload.last_name.trim(),
       payload.first_name.trim(),
       (payload.middle_name || '').trim(),
@@ -180,12 +180,12 @@ function updateTechnologist(payload) {
       (payload.email       || '').trim(),
       payload.username.trim(),
       password,
-        payload.role || 'Medical Technologist',
-        createdAt,
-        new Date(),
-        existing[12] || '',
-        (payload.assigned_deps || '').trim()
-      ]]);
+      payload.role || 'Medical Technologist',
+      createdAt,
+      new Date(),
+      existRow[12] || '',
+      (payload.assigned_deps || '').trim()
+    ]]);
 
     writeAuditLog_('TECH_UPDATE', { tech_id: payload.tech_id });
     return { success: true };

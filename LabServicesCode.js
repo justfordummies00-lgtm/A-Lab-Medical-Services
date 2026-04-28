@@ -364,6 +364,29 @@ function setLabServiceTemplate(servId, templateUrl) {
   }
 }
 
+// ── BATCH SAVE TEMPLATE URLS ─────────────────────────────────
+function saveLabServiceTemplates(templates) {
+  try {
+    if (!templates || !templates.length) return { success: true };
+    const sh = getLabServSheet_();
+    const lr = sh.getLastRow();
+    if (lr < 2) return { success: false, message: 'No services found.' };
+    const ids = sh.getRange(2, 1, lr - 1, 1).getValues().flat().map(String);
+    const now = new Date();
+    templates.forEach(function(t) {
+      const rowIdx = ids.findIndex(id => id.trim() === String(t.serv_id || '').trim());
+      if (rowIdx !== -1) {
+        sh.getRange(rowIdx + 2, 12).setValue((t.template_url || '').trim());
+        sh.getRange(rowIdx + 2, 9).setValue(now);
+      }
+    });
+    return { success: true };
+  } catch (err) {
+    Logger.log('saveLabServiceTemplates ERROR: ' + err.message);
+    return { success: false, message: err.message };
+  }
+}
+
 // ── DELETE ────────────────────────────────────────────────────
 function deleteLabService(servId) {
   try {
@@ -572,9 +595,7 @@ function getLabServiceParams(servId) {
     if (!servId) return { success: false, message: 'Service ID required.' };
     const sh = getLabServParamsSheet_();
     const lr = sh.getLastRow();
-    if (lr < 2) return { success: true, data: [] };
-    const cols = Math.max(sh.getLastColumn(), 10);
-    const data = sh.getRange(2, 1, lr - 1, cols).getValues()
+    const data = lr < 2 ? [] : sh.getRange(2, 1, lr - 1, Math.max(sh.getLastColumn(), 10)).getValues()
       .filter(r => r[0] && String(r[1]).trim() === servId)
       .sort((a, b) => (Number(a[5]) || 0) - (Number(b[5]) || 0))
       .map(r => ({
@@ -587,7 +608,18 @@ function getLabServiceParams(servId) {
         field_type: String(r[8] || 'numeric').trim() || 'numeric',
         options: String(r[9] || '').trim()
       }));
-    return { success: true, data };
+
+    // Also return the service's sheet template URL
+    var templateUrl = '';
+    const servSh = getLabServSheet_();
+    const slr = servSh.getLastRow();
+    if (slr >= 2) {
+      const servRows = servSh.getRange(2, 1, slr - 1, 12).getValues();
+      const servRow = servRows.find(r => String(r[0]).trim() === servId);
+      if (servRow) templateUrl = String(servRow[11] || '').trim();
+    }
+
+    return { success: true, data, template_url: templateUrl, encoding_mode: getSettingValue_('lab_encoding_mode', 'params') };
   } catch (e) {
     Logger.log('getLabServiceParams ERROR: ' + e.message);
     return { success: false, message: e.message };

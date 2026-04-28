@@ -99,6 +99,13 @@
     </select>
   </div>
 
+  <!-- Tech tabs (In Queue / In Progress / Completed) — shown only for Technologist role -->
+  <div id="ordTechTabs" style="display:none;margin-bottom:16px;border-bottom:1.5px solid var(--border);display:flex;gap:2px;">
+    <button class="ord-tab active" id="techTabInQueue" onclick="ord_techTab('IN_QUEUE')">In Queue</button>
+    <button class="ord-tab" id="techTabInProgress" onclick="ord_techTab('IN_PROGRESS')">In Progress</button>
+    <button class="ord-tab" id="techTabCompleted" onclick="ord_techTab('COMPLETED')">Completed</button>
+  </div>
+
   <!-- Empty state -->
   <div id="ordEmptyState" style="text-align:center;padding:60px 20px;">
     <div
@@ -279,6 +286,20 @@
                   </div>
                 </label>
               </div>
+              <!-- Senior Citizen ID -->
+              <div style="grid-column:1/-1;">
+                <label style="font-size:10px;font-weight:700;color:var(--text-3);display:block;margin-bottom:4px;">
+                  Senior Citizen ID <span style="font-size:10px;font-weight:400;color:var(--text-4);">(optional)</span>
+                </label>
+                <input type="text" id="qeScId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter SC ID No.">
+              </div>
+              <!-- PWD ID -->
+              <div style="grid-column:1/-1;">
+                <label style="font-size:10px;font-weight:700;color:var(--text-3);display:block;margin-bottom:4px;">
+                  PWD ID <span style="font-size:10px;font-weight:400;color:var(--text-4);">(optional)</span>
+                </label>
+                <input type="text" id="qePwdId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter PWD ID No.">
+              </div>
             </div>
 
             <div id="qeErr"
@@ -419,6 +440,23 @@
             <div id="wizDiscTotal" style="font-size:11px;color:var(--text-3);margin-top:6px;display:none;">
               Total discount: <span id="wizDiscTotalAmt"
                 style="font-weight:800;color:var(--danger);font-family:var(--mono);"></span>
+            </div>
+            <!-- ID prompt — appears before SC/PWD discount is applied when no ID on file -->
+            <div id="wizDiscIdArea" style="display:none;margin-top:10px;padding:12px;background:rgba(245,158,11,.06);border:1.5px solid rgba(245,158,11,.3);border-radius:var(--radius);">
+              <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:2px;">ID required</div>
+              <div id="wizDiscIdLabel" style="font-size:11px;color:#b45309;margin-bottom:10px;"></div>
+              <div id="wizScIdWrap" style="display:none;margin-bottom:8px;">
+                <label style="font-size:10px;font-weight:700;color:#b45309;display:block;margin-bottom:3px;">Senior Citizen ID <span style="color:var(--danger);">*</span></label>
+                <input type="text" id="wizScId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter Senior Citizen ID No.">
+              </div>
+              <div id="wizPwdIdWrap" style="display:none;margin-bottom:8px;">
+                <label style="font-size:10px;font-weight:700;color:#7c3aed;display:block;margin-bottom:3px;">PWD ID <span style="color:var(--danger);">*</span></label>
+                <input type="text" id="wizPwdId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter PWD ID No.">
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button onclick="ord_confirmDiscountId()" class="btn btn-primary btn-sm" style="flex:1;justify-content:center;font-size:12px;">Apply Discount</button>
+                <button onclick="ord_cancelDiscountId()" class="btn btn-secondary btn-sm" style="font-size:12px;">Cancel</button>
+              </div>
             </div>
           </div>
 
@@ -972,6 +1010,8 @@
         <div id="detItems"></div>
       </div>
 
+      <!-- Totals + Payments + PhilHealth (hidden for Technologist) -->
+      <div id="detFinancialsWrap">
       <!-- Totals + Payments side by side -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div>
@@ -996,6 +1036,7 @@
           PhilHealth Claim</div>
         <div id="detPhilhealthBody"></div>
       </div>
+      </div><!-- /detFinancialsWrap -->
     </div>
 
     <!-- Actions footer -->
@@ -1156,11 +1197,17 @@
     var isLiaison = role === 'Liaison Officer';
     var isSA = role === 'Super Admin';
     var isBA = role === 'Branch Admin';
-    var canCreate = isTech || isReception;
+    var canCreate = isReception;
     _canEditOrders = isReception || isSA || isBA;
 
     document.getElementById('ordNewBtn').style.display = canCreate ? '' : 'none';
     document.getElementById('ordBranchSelector').style.display = isSA ? '' : 'none';
+    if (isTech) {
+      document.getElementById('ordStatCards').style.display = 'none';
+      document.getElementById('ordFilterBar').style.display = 'none';
+      document.getElementById('ordTechTabs').style.display = 'flex';
+      ORD._techTab = 'IN_QUEUE';
+    }
 
     // Transfer button — SA and BA only
     var transferBtn = document.getElementById('ordTransferBtn');
@@ -1195,8 +1242,10 @@
       if (ORD.branchId) {
         // Show skeleton right away before ord_load fires
         document.getElementById('ordEmptyState').style.display = 'none';
-        document.getElementById('ordFilterBar').style.display = 'flex';
-        document.getElementById('ordStatCards').style.display = 'grid';
+        if (!isTech) {
+          document.getElementById('ordFilterBar').style.display = 'flex';
+          document.getElementById('ordStatCards').style.display = 'grid';
+        }
         document.getElementById('ordTableCard').style.display = '';
         document.getElementById('ordTableBody').innerHTML = ord_skeleton();
         ord_load();
@@ -1283,10 +1332,26 @@
     return (svc.service_type || 'lab').split(',').map(function (s) { return s.trim().toLowerCase(); });
   }
 
+  /* ── Tech tab switcher ── */
+  function ord_techTab(tab) {
+    ORD._techTab = tab;
+    ['InQueue', 'InProgress', 'Completed'].forEach(function (t) {
+      var el = document.getElementById('techTab' + t);
+      if (el) el.classList.remove('active');
+    });
+    var idMap = { IN_QUEUE: 'InQueue', IN_PROGRESS: 'InProgress', COMPLETED: 'Completed' };
+    var el = document.getElementById('techTab' + idMap[tab]);
+    if (el) el.classList.add('active');
+    ord_applyFilter();
+  }
+
   /* ── Filter + Render ── */
   function ord_applyFilter() {
     var q = (document.getElementById('ordSearch').value || '').trim().toLowerCase();
-    var tab = (document.getElementById('ordStatusFilter') && document.getElementById('ordStatusFilter').value) || ORD.tab || '';
+    var isTechUser = APP.user && APP.user.role === 'Technologist';
+    var tab = isTechUser
+      ? (ORD._techTab || 'IN_QUEUE')
+      : ((document.getElementById('ordStatusFilter') && document.getElementById('ordStatusFilter').value) || ORD.tab || '');
 
     // Archived orders are not in ORD.all by default — fetch on demand
     if (tab === 'ARCHIVED') {
@@ -1330,7 +1395,13 @@
     }
 
     ORD.filtered = ORD.all.filter(function (o) {
-      if (tab && o.status !== tab) return false;
+      if (tab) {
+        if (tab === 'COMPLETED') {
+          if (o.status !== 'FOR_RELEASE' && o.status !== 'RELEASED') return false;
+        } else {
+          if (o.status !== tab) return false;
+        }
+      }
       if (typeFilter) {
         var types = (o.order_types || 'lab').split(',').map(function (t) { return t.trim(); });
         if (types.indexOf(typeFilter) === -1) return false;
@@ -1574,6 +1645,7 @@
     ORD.wiz = {
       step: 1, patientId: null, patientName: '', patientDiscountIds: [],
       patientPhilPin: '', philBalance: null,
+      patientScId: '', patientPwdId: '', _pendingDiscount: null,
       doctorId: '', doctorId2: '', notes: '',
       items: [], appliedDiscounts: [], services: [],
       packages: [], discounts: [], doctors: [], patients: [], svcSubTab: 'services',
@@ -1679,6 +1751,10 @@
       ord_wizRender(2);
     } else if (ORD.wiz.step === 2) {
       if (!ORD.wiz.items.length) { toast('error', 'Add at least one test.'); return; }
+      if (ORD.wiz._pendingDiscount) {
+        toast('error', 'Please confirm or cancel the pending discount ID before continuing.');
+        return;
+      }
       ord_wizRender(3);
     } else {
       ord_submitOrder();
@@ -1751,6 +1827,8 @@
       p._meta = meta;
       p._discIds = discIds;
       p._discNames = discNames;
+      p._scId = p.senior_citizen_id || '';
+      p._pwdId = p.pwd_id || '';
       // Use data-idx attribute — avoids all quoting issues
       return '<div data-pidx="' + _e(p.patient_id) + '" onclick="ord_selectByPatientId(this.getAttribute(\'data-pidx\'))" '
         + 'style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);' + selStyle + '" '
@@ -1766,21 +1844,26 @@
   function ord_selectByPatientId(patientId) {
     var p = ORD.wiz.patients.find(function (x) { return x.patient_id === patientId; });
     if (!p) return;
-    ord_selectPatient(p.patient_id, p._name, p._meta, p._discIds || [], p._discNames || [], p.philhealth_pin || '');
+    ord_selectPatient(p.patient_id, p._name, p._meta, p._discIds || [], p._discNames || [], p.philhealth_pin || '', p._scId || '', p._pwdId || '');
   }
 
-  function ord_selectPatient(id, name, meta, discountIds, discountNames, philPin) {
+  function ord_selectPatient(id, name, meta, discountIds, discountNames, philPin, scId, pwdId) {
     ORD.wiz.patientId = id;
     ORD.wiz.patientName = name;
     ORD.wiz.patientDiscountIds = discountIds || [];
     ORD.wiz.patientPhilPin = philPin || '';
+    ORD.wiz.patientScId = scId || '';
+    ORD.wiz.patientPwdId = pwdId || '';
     ORD.wiz.philBalance = null;
     document.getElementById('wizPatCard').style.display = '';
     document.getElementById('wizPatName').textContent = name;
     document.getElementById('wizPatMeta').textContent = meta;
     var discEl = document.getElementById('wizPatDisc');
-    discEl.textContent = (discountNames && discountNames.length)
-      ? '🏷 ' + discountNames.join(', ') : '';
+    var discTxt = (discountNames && discountNames.length) ? '🏷 ' + discountNames.join(', ') : '';
+    var idBadges = '';
+    if (scId)  idBadges += ' <span style="font-size:10px;background:rgba(245,158,11,.15);color:#b45309;padding:1px 6px;border-radius:10px;font-family:var(--mono);">SC ID: ' + _e(scId) + '</span>';
+    if (pwdId) idBadges += ' <span style="font-size:10px;background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:10px;font-family:var(--mono);">PWD ID: ' + _e(pwdId) + '</span>';
+    discEl.innerHTML = discTxt + idBadges;
     ord_renderPatList();
 
     // Fetch PhilHealth balance if patient has PIN
@@ -1809,6 +1892,8 @@
     ORD.wiz.patientId = null;
     ORD.wiz.patientName = '';
     ORD.wiz.patientDiscountIds = [];
+    ORD.wiz.patientScId = '';
+    ORD.wiz.patientPwdId = '';
     document.getElementById('wizPatCard').style.display = 'none';
     document.getElementById('wizPatSearch').value = '';
     ord_renderPatList();
@@ -2015,13 +2100,89 @@
   function ord_addDiscount(sel) {
     var discId = sel.value;
     if (!discId) return;
+    sel.value = '';
+
     if (ORD.wiz.appliedDiscounts.some(function (d) { return d.discount_id === discId; })) {
-      sel.value = '';
       toast('info', 'Discount already applied.');
       return;
     }
     var d = ORD.wiz.discounts.find(function (x) { return x.discount_id === discId; });
     if (!d) return;
+
+    var n    = (d.discount_name || '').toLowerCase();
+    var isSc = n.indexOf('senior') !== -1;
+    var isPwd = n.indexOf('pwd') !== -1 || n.indexOf('disability') !== -1;
+
+    // SC discount — require ID before applying
+    if (isSc && !ORD.wiz.patientScId) {
+      ORD.wiz._pendingDiscount = d;
+      document.getElementById('wizDiscIdLabel').textContent = 'Enter the Senior Citizen ID to apply "' + d.discount_name + '"';
+      document.getElementById('wizScIdWrap').style.display  = '';
+      document.getElementById('wizPwdIdWrap').style.display = 'none';
+      document.getElementById('wizScId').value  = '';
+      document.getElementById('wizDiscIdArea').style.display = '';
+      document.getElementById('wizScId').focus();
+      return;
+    }
+
+    // PWD discount — require ID before applying
+    if (isPwd && !ORD.wiz.patientPwdId) {
+      ORD.wiz._pendingDiscount = d;
+      document.getElementById('wizDiscIdLabel').textContent = 'Enter the PWD ID to apply "' + d.discount_name + '"';
+      document.getElementById('wizPwdIdWrap').style.display = '';
+      document.getElementById('wizScIdWrap').style.display  = 'none';
+      document.getElementById('wizPwdId').value  = '';
+      document.getElementById('wizDiscIdArea').style.display = '';
+      document.getElementById('wizPwdId').focus();
+      return;
+    }
+
+    ord_applyDiscount_(d);
+  }
+
+  /* ── Confirm ID and apply the pending discount ── */
+  function ord_confirmDiscountId() {
+    var d = ORD.wiz._pendingDiscount;
+    if (!d) return;
+    var n    = (d.discount_name || '').toLowerCase();
+    var isSc = n.indexOf('senior') !== -1;
+
+    if (isSc) {
+      var idVal = (document.getElementById('wizScId').value || '').trim();
+      if (!idVal) { toast('error', 'Please enter the Senior Citizen ID.'); document.getElementById('wizScId').focus(); return; }
+      ORD.wiz.patientScId = idVal;
+    } else {
+      var idVal = (document.getElementById('wizPwdId').value || '').trim();
+      if (!idVal) { toast('error', 'Please enter the PWD ID.'); document.getElementById('wizPwdId').focus(); return; }
+      ORD.wiz.patientPwdId = idVal;
+    }
+
+    document.getElementById('wizDiscIdArea').style.display = 'none';
+    ORD.wiz._pendingDiscount = null;
+
+    // Refresh the patient card ID badges to reflect the newly entered ID
+    var scId  = ORD.wiz.patientScId;
+    var pwdId = ORD.wiz.patientPwdId;
+    var discEl = document.getElementById('wizPatDisc');
+    if (discEl) {
+      var existing = discEl.innerHTML.replace(/<span[^>]*>(?:SC|PWD) ID:.*?<\/span>/g, '').trim();
+      var idBadges = '';
+      if (scId)  idBadges += ' <span style="font-size:10px;background:rgba(245,158,11,.15);color:#b45309;padding:1px 6px;border-radius:10px;font-family:var(--mono);">SC ID: ' + _e(scId) + '</span>';
+      if (pwdId) idBadges += ' <span style="font-size:10px;background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:10px;font-family:var(--mono);">PWD ID: ' + _e(pwdId) + '</span>';
+      discEl.innerHTML = existing + idBadges;
+    }
+
+    ord_applyDiscount_(d);
+  }
+
+  /* ── Cancel ID prompt — discount is NOT applied ── */
+  function ord_cancelDiscountId() {
+    ORD.wiz._pendingDiscount = null;
+    document.getElementById('wizDiscIdArea').style.display = 'none';
+  }
+
+  /* ── Internal: compute and push discount into applied list ── */
+  function ord_applyDiscount_(d) {
     var subtotal = ORD.wiz.items.reduce(function (s, i) { return s + i.unit_fee; }, 0);
     var amt = d.type === 'percentage'
       ? parseFloat((subtotal * d.value / 100).toFixed(2))
@@ -2030,7 +2191,6 @@
       discount_id: d.discount_id, discount_name: d.discount_name,
       type: d.type, value: d.value, amount: amt
     });
-    sel.value = '';
     ord_renderDiscChips();
     ord_updateTotals();
   }
@@ -2054,9 +2214,15 @@
       return;
     }
     chips.innerHTML = ORD.wiz.appliedDiscounts.map(function (d) {
-      var valDisp = d.type === 'percentage' ? d.value + '%' : '₱' + d.value;
+      var valDisp  = d.type === 'percentage' ? d.value + '%' : '₱' + d.value;
+      var n        = (d.discount_name || '').toLowerCase();
+      var isSc     = n.indexOf('senior') !== -1;
+      var isPwd    = n.indexOf('pwd') !== -1 || n.indexOf('disability') !== -1;
+      var idBadge  = '';
+      if (isSc && ORD.wiz.patientScId)   idBadge = ' <span style="font-size:10px;font-weight:600;font-family:var(--mono);opacity:.85;">· SC ID: ' + _e(ORD.wiz.patientScId) + '</span>';
+      if (isPwd && ORD.wiz.patientPwdId) idBadge = ' <span style="font-size:10px;font-weight:600;font-family:var(--mono);opacity:.85;">· PWD ID: ' + _e(ORD.wiz.patientPwdId) + '</span>';
       return '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.3);border-radius:20px;font-size:11px;font-weight:700;color:#92400e;">'
-        + _e(d.discount_name) + ' · -' + valDisp
+        + _e(d.discount_name) + ' · -' + valDisp + idBadge
         + ' <button onclick="ord_removeDiscount(\'' + _e(d.discount_id) + '\')" style="background:none;border:none;cursor:pointer;color:#92400e;font-size:14px;padding:0;line-height:1;">×</button>'
         + '</span>';
     }).join('');
@@ -2565,6 +2731,9 @@
     document.getElementById('detActions').innerHTML = '';
     document.getElementById('detPhilhealthWrap').style.display = 'none';
     document.getElementById('detItemCount').textContent = '';
+    var _isTechView = APP.user && APP.user.role === 'Technologist';
+    var _finWrap = document.getElementById('detFinancialsWrap');
+    if (_finWrap) _finWrap.style.display = _isTechView ? 'none' : '';
 
     var shimCell = '<div style="height:12px;border-radius:4px;background:linear-gradient(90deg,#f0f2f7 25%,#e4e8f0 50%,#f0f2f7 75%);background-size:400px 100%;animation:shimmer 1.3s infinite;"></div>';
     document.getElementById('detItems').innerHTML =
@@ -2706,38 +2875,7 @@
         if ((isReception || isSA || isBA) && (payStatus === 'UNPAID' || payStatus === 'PARTIAL'))
           actions += '<button class="btn btn-primary btn-sm" style="background:#16a34a;border-color:#16a34a;" onclick="ord_openAcceptPayment(\'' + _e(o.order_id) + '\',' + _e(String(r.totals.balance)) + ')">💰 Accept Payment</button> ';
 
-        if (isTech) {
-          var techRole2 = APP.user ? (APP.user.tech_role || '') : '';
-          var isRadTech = techRole2.toLowerCase().indexOf('radiolog') !== -1;
-
-          if (isRadTech) {
-            // ── RadTech actions ──
-            if (o.status === 'IN_QUEUE' || o.status === 'PAID')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_startProcessing(\'' + _e(o.order_id) + '\')">▶ Start Processing</button> ';
-            if (o.status === 'IN_PROGRESS' || o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-secondary btn-sm" style="background:rgba(14,165,233,.08);border-color:#0ea5e9;color:#0ea5e9;" onclick="ord_openXrayChecklist(\'' + _e(o.order_id) + '\')">🩻 X-Ray Checklist</button> ';
-            if (o.status === 'IN_PROGRESS')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_openEncode(\'' + _e(o.order_id) + '\')">💻 Encode Results</button> ';
-            if (o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-secondary btn-sm" onclick="ord_openEncode(\'' + _e(o.order_id) + '\')">💻 Edit Encoding</button> ';
-            if (o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_releaseOrder(\'' + _e(o.order_id) + '\')">✅ Release to Patient</button> ';
-          } else {
-            // ── MedTech (lab) actions ──
-            if (o.status === 'IN_QUEUE' || o.status === 'PAID')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_startProcessing(\'' + _e(o.order_id) + '\')">▶ Start Processing</button> ';
-            if (o.status === 'IN_PROGRESS' || o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-secondary btn-sm" onclick="ord_openChecklist(\'' + _e(o.order_id) + '\')">☑ Checklist</button> ';
-            if (o.status === 'IN_PROGRESS')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_openEncode(\'' + _e(o.order_id) + '\')">💻 Encode Results</button> ';
-            if (o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-secondary btn-sm" onclick="ord_openEncode(\'' + _e(o.order_id) + '\')">💻 Edit Encoding</button> ';
-            if (o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-secondary btn-sm" onclick="ord_openUpload(\'' + _e(o.order_id) + '\',\'' + _e(o.patient_id) + '\')">📎 Upload Result</button> ';
-            if (o.status === 'FOR_RELEASE')
-              actions += '<button class="btn btn-primary btn-sm" onclick="ord_releaseOrder(\'' + _e(o.order_id) + '\')">✅ Release to Patient</button> ';
-          }
-        }
+        // Technologists see order history only — all actions handled in Lab/X-Ray Queue
 
         // Liaison Officer — open checklist from order detail too
         if (isLiaison && (o.status === 'IN_QUEUE' || o.status === 'PAID' || o.status === 'IN_PROGRESS'))
@@ -2756,11 +2894,15 @@
         if (r.result && r.result.drive_url)
           actions += '<a href="' + _e(r.result.drive_url) + '" target="_blank" class="btn btn-sm btn-secondary" style="text-decoration:none;">📄 View Result</a>';
 
-        // Print Receipt — available for all roles on IN_QUEUE+ orders
-        if (['IN_QUEUE', 'PAID', 'IN_PROGRESS', 'FOR_RELEASE', 'RELEASED'].indexOf(o.status) !== -1)
+        // Print Receipt — Receptionist/Admin only
+        if (!isTechView && ['IN_QUEUE', 'PAID', 'IN_PROGRESS', 'FOR_RELEASE', 'RELEASED'].indexOf(o.status) !== -1)
           actions += '<button class="btn btn-sm btn-secondary" onclick="ord_printReceipt(\'' + _e(o.order_id) + '\')" style="margin-left:auto;">🖨️ Print Receipt</button>';
 
         document.getElementById('detActions').innerHTML = actions;
+
+        // Hide billing section for techs — they only need services + results
+        var finWrap = document.getElementById('detFinancialsWrap');
+        if (finWrap) finWrap.style.display = isTechView ? 'none' : '';
 
         // PhilHealth claim section
         var philWrap = document.getElementById('detPhilhealthWrap');
@@ -3031,6 +3173,8 @@
     var email = (document.getElementById('qeEmail').value || '').trim();
     var adr = (document.getElementById('qeAddress').value || '').trim();
     var philPn = (document.getElementById('qePhilPin').value || '').trim();
+    var qeScId  = (document.getElementById('qeScId').value  || '').trim();
+    var qePwdId = (document.getElementById('qePwdId').value || '').trim();
     var is4ps = document.getElementById('qe4ps').checked ? 1 : 0;
     var errEl = document.getElementById('qeErr');
 
@@ -3067,7 +3211,7 @@
         var age = calcAge(bd);
         var metaDisp = age + ' yrs · ' + sex + (con ? ' · ' + con : '');
 
-        ord_selectPatient(r.patient_id, fullName, metaDisp, [], [], philPn || '');
+        ord_selectPatient(r.patient_id, fullName, metaDisp, [], [], philPn || '', qeScId, qePwdId);
 
         ORD.wiz.patients.unshift({
           patient_id: r.patient_id,
@@ -3076,10 +3220,14 @@
           _meta: metaDisp,
           _discIds: [],
           _discNames: [],
-          philhealth_pin: philPn || ''
+          philhealth_pin: philPn || '',
+          senior_citizen_id: qeScId,
+          pwd_id: qePwdId,
+          _scId: qeScId,
+          _pwdId: qePwdId
         });
 
-        ['qeLastName', 'qeFirstName', 'qeMiddleName', 'qeBirthdate', 'qeContact', 'qeEmail', 'qeAddress', 'qePhilPin'].forEach(function (id) {
+        ['qeLastName', 'qeFirstName', 'qeMiddleName', 'qeBirthdate', 'qeContact', 'qeEmail', 'qeAddress', 'qePhilPin', 'qeScId', 'qePwdId'].forEach(function (id) {
           var el = document.getElementById(id); if (el) el.value = '';
         });
         var cb = document.getElementById('qe4ps'); if (cb) cb.checked = false;
@@ -3097,6 +3245,8 @@
         email: email, address: adr,
         philhealth_pin: philPn,
         is_4ps: is4ps,
+        senior_citizen_id: qeScId,
+        pwd_id: qePwdId,
         enrolled_by: enrolledBy
       });
   }

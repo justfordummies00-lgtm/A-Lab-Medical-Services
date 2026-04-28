@@ -121,7 +121,7 @@
       <div id="techPanelEmpty" class="card" style="padding:40px 24px;text-align:center;">
         <div style="font-size:44px;margin-bottom:12px;" id="techPanelEmptyIcon">🔬</div>
         <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px;">Select an order</div>
-        <div style="font-size:12px;color:var(--text-4);">Click any order from the queue on the left to view its processing steps.</div>
+        <div style="font-size:12px;color:var(--text-4);">Click any order from the queue on the left to view to start encoding results.</div>
       </div>
 
       <!-- Service detail panel (shown when service is selected) -->
@@ -152,9 +152,9 @@
             <div id="panelOtherServices" style="display:flex;flex-direction:column;gap:6px;"></div>
           </div>
 
-          <!-- Right Column: Processing Steps -->
+          <!-- Right Column: Encoding Results -->
           <div class="card" style="padding:16px 20px;">
-            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Processing Steps</div>
+            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Encoding Results</div>
             <div id="panelSteps" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;"></div>
             <div id="panelEncodeSection"></div>
           </div>
@@ -702,21 +702,28 @@ function techdash_updateCheckpoint(itemId, checkpoint, checked) {
 function techdash_renderSheetLink(container, item, borderStyle) {
   var iid = item.order_item_id;
 
-  // Load existing PDF result + service params in parallel
+  // Load existing result + service params in parallel
   var existingPdf = null;
+  var existingSheet = null;
   var serviceParams = [];
+  var encodingMode = 'params';
   var loaded = 0;
 
   function onBothLoaded() {
     loaded++;
     if (loaded < 2) return;
-    techdash_buildLabForm(container, item, borderStyle, existingPdf, serviceParams);
+    TDASH._labEncodingMode = encodingMode;
+    techdash_buildLabForm(container, item, borderStyle, existingPdf, serviceParams, existingSheet, encodingMode);
   }
 
   google.script.run
     .withSuccessHandler(function(r) {
-      var row = r && r.success && r.data && r.data.length ? r.data[0] : null;
-      existingPdf = (row && (row.unit === 'LAB_PDF' || row.unit === 'LAB_DOCX')) ? row.result_value : null;
+      if (r && r.success && r.data) {
+        r.data.forEach(function(row) {
+          if (!existingPdf && (row.unit === 'LAB_PDF' || row.unit === 'LAB_DOCX')) existingPdf = row.result_value;
+          if (!existingSheet && row.unit === 'SHEET_TEMPLATE') existingSheet = row.result_value;
+        });
+      }
       onBothLoaded();
     })
     .withFailureHandler(function() { onBothLoaded(); })
@@ -725,13 +732,16 @@ function techdash_renderSheetLink(container, item, borderStyle) {
   google.script.run
     .withSuccessHandler(function(r) {
       serviceParams = (r && r.success && r.data) ? r.data : [];
+      if (r && r.template_url) item._templateUrl = r.template_url;
+      if (r && r.encoding_mode) encodingMode = r.encoding_mode;
       onBothLoaded();
     })
     .withFailureHandler(function() { onBothLoaded(); })
     .getLabServiceParams(item.serv_id);
 }
 
-function techdash_buildLabForm(container, item, borderStyle, existingPdf, params) {
+function techdash_buildLabForm(container, item, borderStyle, existingPdf, params, existingSheet, encodingMode) {
+  encodingMode = encodingMode || TDASH._labEncodingMode || 'params';
   var iid     = _e(item.order_item_id);
   var encDone = !!item.encoded_at;
 
@@ -756,23 +766,21 @@ function techdash_buildLabForm(container, item, borderStyle, existingPdf, params
       + '</div>';
   }
 
-  if (!existingPdf || !encDone) {
-    var procDone = !!item.processed_at;
-    var disabled = procDone ? '' : ' disabled';
-    var opacity  = procDone ? '' : 'opacity:.5;pointer-events:none;';
+  // ── Params mode: show in-app encoding form ───────────────────
+  if (encodingMode === 'params' && (!existingPdf || !encDone)) {
+    var disabled = '';
 
     if (!params.length) {
-      html += '<div style="' + opacity + 'padding:14px;border:1.5px dashed var(--border);border-radius:8px;text-align:center;font-size:12px;color:var(--text-3);">'
+      html += '<div style="padding:14px;border:1.5px dashed var(--border);border-radius:8px;text-align:center;font-size:12px;color:var(--text-3);">'
         + 'No result fields configured for this service.<br>'
         + '<span style="font-size:11px;color:var(--text-4);">An admin can add them via Lab Services → Params.</span>'
         + '</div>';
     } else {
-      html += '<div style="' + opacity + 'display:flex;flex-direction:column;gap:8px;" id="labFields_' + iid + '">';
+      html += '<div style="display:flex;flex-direction:column;gap:8px;" id="labFields_' + iid + '">';
 
       params.forEach(function(p, idx) {
         var ft = p.field_type || 'numeric';
 
-        // Section header — no input, just a styled label
         if (ft === 'header') {
           html += '<div style="margin-top:10px;margin-bottom:2px;padding:6px 10px;background:rgba(99,102,241,.08);border-left:3px solid #6366f1;border-radius:4px;">'
             + '<span style="font-size:11px;font-weight:800;color:#4f46e5;text-transform:uppercase;letter-spacing:.05em;">' + _e(p.param_name) + '</span>'
@@ -780,7 +788,6 @@ function techdash_buildLabForm(container, item, borderStyle, existingPdf, params
           return;
         }
 
-        // Sub-section — italic label, indented
         if (ft === 'subheader') {
           html += '<div style="margin-top:6px;margin-bottom:2px;padding:4px 10px 4px 18px;">'
             + '<span style="font-size:11px;font-style:italic;font-weight:700;color:var(--text-2);">' + _e(p.param_name) + '</span>'
@@ -788,7 +795,6 @@ function techdash_buildLabForm(container, item, borderStyle, existingPdf, params
           return;
         }
 
-        // Data row
         html += '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;">'
           + '<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">'
           + '<span style="font-size:12px;font-weight:700;color:var(--text-1);">' + _e(p.param_name) + '</span>';
@@ -832,12 +838,76 @@ function techdash_buildLabForm(container, item, borderStyle, existingPdf, params
     }
   }
 
+  // ── Sheet Template mode: show generate/open button ───────────
+  if (encodingMode === 'sheet_template') {
+    var templateUrl = item._templateUrl || '';
+    if (!templateUrl && !existingSheet) {
+      html += '<div style="padding:14px;border:1.5px dashed var(--border);border-radius:8px;text-align:center;font-size:12px;color:var(--text-3);">'
+        + 'No sheet template configured for this service.<br>'
+        + '<span style="font-size:11px;color:var(--text-4);">An admin can add one via Branch Settings → MedTech Sheet Templates.</span>'
+        + '</div>';
+    } else {
+      html += '<div style="padding:14px;border:1.5px solid rgba(22,163,74,.25);border-radius:var(--radius-lg);background:rgba(22,163,74,.04);">'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">'
+          + '<svg width="15" height="15" fill="none" stroke="#16a34a" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
+          + '<span style="font-size:12px;font-weight:800;color:#15803d;text-transform:uppercase;letter-spacing:.05em;">Sheet Template</span>'
+        + '</div>';
+
+      if (existingSheet) {
+        html += '<div style="display:flex;align-items:center;gap:10px;background:var(--white);padding:10px 12px;border:1px solid rgba(22,163,74,.2);border-radius:var(--radius);margin-bottom:10px;">'
+          + '<svg width="20" height="20" fill="none" stroke="#16a34a" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
+          + '<div style="flex:1;"><div style="font-size:12px;font-weight:700;color:var(--text-1);">Template Generated</div>'
+          + '<div style="font-size:11px;color:var(--text-3);">Patient info pre-filled. Open to encode results manually.</div></div>'
+          + '<a href="' + _e(existingSheet) + '" target="_blank" class="btn btn-primary btn-sm" style="background:#16a34a;border-color:#16a34a;">Open Sheet</a>'
+          + '</div>';
+        if (templateUrl) {
+          html += '<div style="display:flex;justify-content:flex-end;">'
+            + '<button class="btn btn-secondary btn-sm" onclick="techdash_genSheetTemplate(\'' + iid + '\')" style="font-size:11px;">↺ Regenerate</button>'
+            + '</div>';
+        }
+      } else {
+        html += '<div style="font-size:12px;color:var(--text-3);margin-bottom:10px;">Generate a patient-prefilled copy of the sheet template to fill in results manually.</div>'
+          + '<div style="display:flex;justify-content:flex-end;">'
+          + '<button id="genTemplBtn_' + iid + '" class="btn btn-primary btn-sm" style="background:#16a34a;border-color:#16a34a;" onclick="techdash_genSheetTemplate(\'' + iid + '\')">'
+          + '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>'
+          + 'Generate Sheet Template</button>'
+          + '</div>';
+      }
+      html += '</div>';
+    }
+  }
+
   html += '</div>';
   container.innerHTML = html;
 
   // Store params on TDASH for use during save
   TDASH._labParams = TDASH._labParams || {};
   TDASH._labParams[item.order_item_id] = params;
+}
+
+function techdash_genSheetTemplate(itemId) {
+  var item = TDASH.selectedOrderItems.find(function(i){ return i.order_item_id === itemId; });
+  if (!item) return;
+  var btn = document.getElementById('genTemplBtn_' + itemId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  var encodedBy = (APP.user && APP.user.admin_id) || '';
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        toast('error', (r && r.message) || 'Failed to generate template.');
+        if (btn) { btn.disabled = false; btn.textContent = 'Generate Sheet Template'; }
+        return;
+      }
+      toast('success', 'Sheet template generated!');
+      // Refresh the encoding panel to show the new sheet link
+      if (item) item._sheetGenerated = true;
+      techdash_renderServicePanel();
+    })
+    .withFailureHandler(function(e) {
+      toast('error', (e && e.message) || 'Connection error.');
+      if (btn) { btn.disabled = false; btn.textContent = 'Generate Sheet Template'; }
+    })
+    .generateSheetTemplate(TDASH.branchId, TDASH.selectedOrderId, itemId, encodedBy);
 }
 
 function techdash_reEncodeLabForm(itemId) {
@@ -972,7 +1042,6 @@ function techdash_renderXrayEncoding(container, item, borderStyle) {
     .withSuccessHandler(function(r) {
       var existing = (r && r.success && r.data && r.data.length) ? r.data[0] : null;
       var pdfUrl = existing && (existing.unit === 'XRAY_PDF' || existing.unit === 'XRAY_DOCX') ? existing.result_value : '';
-      var procDone = !!item.processed_at;
       var encDone  = !!item.encoded_at;
       var html = '<div style="' + borderStyle + '">'
         + '<div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;">X-Ray Result</div>';
@@ -996,24 +1065,22 @@ function techdash_renderXrayEncoding(container, item, borderStyle) {
           + '</div>';
       } else {
         // Not yet encoded — show form
-        var disabledAttr = procDone ? '' : ' disabled';
-        var opacityStyle = procDone ? '' : 'opacity:.5;pointer-events:none;';
-        html += '<div style="' + opacityStyle + 'display:flex;flex-direction:column;gap:10px;">'
+        html += '<div style="display:flex;flex-direction:column;gap:10px;">'
           + '<div>'
           + '<label class="f-label" style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;">Clinical Data</label>'
-          + '<textarea id="xrayCD_' + _e(iid) + '" class="f-inp" rows="3" placeholder="Enter clinical data…" style="resize:vertical;font-size:13px;"' + disabledAttr + '></textarea>'
+          + '<textarea id="xrayCD_' + _e(iid) + '" class="f-inp" rows="3" placeholder="Enter clinical data…" style="resize:vertical;font-size:13px;"></textarea>'
           + '</div>'
           + '<div>'
           + '<label class="f-label" style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;">Findings <span style="color:var(--danger);">*</span></label>'
-          + '<textarea id="xrayFN_' + _e(iid) + '" class="f-inp" rows="4" placeholder="Enter findings…" style="resize:vertical;font-size:13px;"' + disabledAttr + '></textarea>'
+          + '<textarea id="xrayFN_' + _e(iid) + '" class="f-inp" rows="4" placeholder="Enter findings…" style="resize:vertical;font-size:13px;"></textarea>'
           + '</div>'
           + '<div>'
           + '<label class="f-label" style="font-size:11px;font-weight:700;color:var(--text-2);text-transform:uppercase;">Impression <span style="color:var(--danger);">*</span></label>'
-          + '<textarea id="xrayIM_' + _e(iid) + '" class="f-inp" rows="3" placeholder="Enter impression…" style="resize:vertical;font-size:13px;"' + disabledAttr + '></textarea>'
+          + '<textarea id="xrayIM_' + _e(iid) + '" class="f-inp" rows="3" placeholder="Enter impression…" style="resize:vertical;font-size:13px;"></textarea>'
           + '</div>'
           + '<div id="xrayErr_' + _e(iid) + '" style="display:none;font-size:11px;color:var(--danger);background:var(--danger-bg);border-radius:6px;padding:6px 10px;"></div>'
           + '<div style="display:flex;justify-content:flex-end;">'
-          + '<button id="xraySaveBtn_' + _e(iid) + '" class="btn btn-primary"' + disabledAttr + ' onclick="techdash_saveXrayResult(\'' + _e(iid) + '\')">'
+          + '<button id="xraySaveBtn_' + _e(iid) + '" class="btn btn-primary" onclick="techdash_saveXrayResult(\'' + _e(iid) + '\')">'
           + '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>'
           + ' Save &amp; Generate PDF</button>'
           + '</div>'

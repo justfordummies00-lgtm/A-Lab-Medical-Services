@@ -913,18 +913,20 @@ function getBranchPatients(branchId, query) {
     const q = (query || '').toLowerCase().trim();
     const lr = sh.getLastRow();
     // Single batch read
-    const data = sh.getRange(2, 1, lr - 1, 11).getValues()
+    const data = sh.getRange(2, 1, lr - 1, Math.max(sh.getLastColumn(), 18)).getValues()
       .filter(r => r[0] && String(r[0]).trim())
       .map(r => ({
-        patient_id: String(r[0]).trim(),
-        last_name: String(r[1] || '').trim(),
-        first_name: String(r[2] || '').trim(),
-        middle_name: String(r[3] || '').trim(),
-        sex: String(r[4] || '').trim(),
-        dob: r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
-        contact: String(r[6] || '').trim(),
-        philhealth_pin: String(r[9] || '').trim(),
-        discount_ids: String(r[10] || '').trim()
+        patient_id:        String(r[0]).trim(),
+        last_name:         String(r[1] || '').trim(),
+        first_name:        String(r[2] || '').trim(),
+        middle_name:       String(r[3] || '').trim(),
+        sex:               String(r[4] || '').trim(),
+        dob:               r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+        contact:           String(r[6] || '').trim(),
+        philhealth_pin:    String(r[9] || '').trim(),
+        discount_ids:      String(r[10] || '').trim(),
+        senior_citizen_id: String(r[16] || '').trim(),
+        pwd_id:            String(r[17] || '').trim()
       }))
       .filter(p => !q || [p.last_name, p.first_name, p.contact, p.patient_id].join(' ').toLowerCase().includes(q));
     return { success: true, data };
@@ -1938,7 +1940,9 @@ function enrollPatientQuick(branchId, payload) {
     address: payload.address || '',
     philhealth_pin: payload.philhealth_pin || '',
     discount_ids: '',
-    is_4ps: payload.is_4ps || 0
+    is_4ps: payload.is_4ps || 0,
+    senior_citizen_id: payload.senior_citizen_id || '',
+    pwd_id: payload.pwd_id || ''
   };
   var result = createPatient(branchId, mapped);
   if (result.success) {
