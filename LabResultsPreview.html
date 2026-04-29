@@ -1,0 +1,618 @@
+<!-- ══ LAB RESULTS PREVIEW — Print-ready HTML template renderer ══ -->
+<div class="page-view" id="page-lab-results-preview">
+
+  <!-- Header -->
+  <div class="card" style="padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div>
+      <div style="font-size:16px;font-weight:800;color:var(--text-1);">Lab Results Preview</div>
+      <div style="font-size:12px;color:var(--text-3);">Select an order to preview and print lab result templates</div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <button class="btn btn-secondary" onclick="lrp_refresh()" title="Refresh orders">
+        <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M20.49 9A9 9 0 005.64 5.64L4 4m16 16l-1.64-1.64A9 9 0 014.51 15"/></svg>
+        Refresh
+      </button>
+    </div>
+  </div>
+
+  <!-- Split layout: order list + preview -->
+  <div style="display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start;">
+
+    <!-- LEFT: Order selector -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:12px 14px;border-bottom:1px solid var(--border);">
+        <input type="text" id="lrpSearch" class="f-inp" style="font-size:12px;padding:6px 10px;height:auto;" placeholder="Search patient name or order no..." oninput="lrp_filterOrders()">
+      </div>
+      <div style="padding:6px 10px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;gap:6px;align-items:center;">
+        <select id="lrpStatusFilter" class="f-inp" style="font-size:11px;padding:4px 8px;height:auto;width:auto;min-width:100px;" onchange="lrp_filterOrders()">
+          <option value="">All Encoded</option>
+          <option value="FOR_RELEASE">For Release</option>
+          <option value="RELEASED">Released</option>
+        </select>
+        <span style="font-size:10px;color:var(--text-4);" id="lrpOrderCount"></span>
+      </div>
+      <div id="lrpOrderList" style="max-height:640px;overflow-y:auto;">
+        <div style="padding:28px;text-align:center;color:var(--text-4);font-size:12px;">Loading orders...</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Preview pane -->
+    <div id="lrpPreviewPane">
+      <div class="card" style="padding:40px 24px;text-align:center;" id="lrpEmptyState">
+        <div style="font-size:44px;margin-bottom:12px;">📋</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text-2);margin-bottom:6px;">Select an order to preview</div>
+        <div style="font-size:12px;color:var(--text-4);">Choose an order from the list on the left to preview printable lab result templates.</div>
+      </div>
+
+      <!-- Preview content (hidden until order selected) -->
+      <div id="lrpPreviewContent" style="display:none;">
+        <!-- Category tabs -->
+        <div class="card" style="padding:12px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div id="lrpCategoryTabs" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-secondary" onclick="lrp_printAll()" title="Print all categories">
+              <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+              Print All
+            </button>
+          </div>
+        </div>
+
+        <!-- Rendered pages -->
+        <div id="lrpRenderedPages"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Print-only styles -->
+<style>
+  /* ── Screen styles ── */
+  .lrp-order-item {
+    padding:10px 14px;
+    border-bottom:1px solid var(--border);
+    cursor:pointer;
+    transition:background .12s;
+  }
+  .lrp-order-item:hover { background:var(--gray-50); }
+  .lrp-order-item.active { background:rgba(16,168,168,.07); border-left:3px solid var(--teal-500); }
+
+  .lrp-cat-tab {
+    padding:5px 12px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:700;
+    cursor:pointer;
+    border:1.5px solid var(--border);
+    background:var(--white);
+    color:var(--text-2);
+    transition:all .12s;
+  }
+  .lrp-cat-tab:hover { border-color:var(--teal-500); color:var(--teal-600); }
+  .lrp-cat-tab.active { background:var(--teal-600); color:#fff; border-color:var(--teal-600); }
+
+  /* ── Result page card (on screen) ── */
+  .lrp-page {
+    background:#fff;
+    border:1px solid #e5e7eb;
+    border-radius:8px;
+    padding:40px 48px;
+    margin-bottom:16px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06);
+    max-width:820px;
+    position:relative;
+  }
+
+  /* ── Header block ── */
+  .lrp-header {
+    display:flex;
+    justify-content:space-between;
+    margin-bottom:16px;
+    font-size:12px;
+    line-height:1.6;
+  }
+  .lrp-header-left { flex:1; }
+  .lrp-header-right { text-align:right; }
+  .lrp-header-label { font-weight:700; display:inline-block; min-width:110px; }
+
+  /* ── Title banner ── */
+  .lrp-title-banner {
+    text-align:center;
+    margin:20px 0 18px;
+    padding:10px 16px;
+    border:2.5px solid #1a1a1a;
+    font-size:24px;
+    font-weight:900;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    font-family:'Geist',Arial,sans-serif;
+  }
+
+  /* ── Result table ── */
+  .lrp-result-table {
+    width:100%;
+    border-collapse:collapse;
+    font-size:12px;
+    margin-bottom:12px;
+  }
+  .lrp-result-table th {
+    padding:6px 8px;
+    font-weight:800;
+    text-align:left;
+    border-bottom:2px solid #333;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:#111;
+  }
+  .lrp-result-table td {
+    padding:4px 8px;
+    border-bottom:1px solid #eee;
+    vertical-align:top;
+  }
+  .lrp-result-table .lrp-section-header td {
+    font-weight:800;
+    font-size:11px;
+    text-transform:uppercase;
+    padding-top:10px;
+    padding-bottom:4px;
+    border-bottom:1.5px solid #ccc;
+    color:#333;
+    letter-spacing:.03em;
+  }
+  .lrp-result-table .lrp-subheader td {
+    font-weight:700;
+    font-style:italic;
+    font-size:11px;
+    padding-top:8px;
+    padding-bottom:3px;
+    border-bottom:none;
+    color:#555;
+  }
+  .lrp-result-table .lrp-note td {
+    font-style:italic;
+    font-size:10px;
+    color:#666;
+    border-bottom:none;
+  }
+  .lrp-result-table .lrp-sublabel td {
+    font-style:italic;
+    font-size:10px;
+    color:#888;
+    border-bottom:none;
+    padding-top:0;
+  }
+  .lrp-result-table .lrp-indent td:first-child {
+    padding-left:28px;
+  }
+  .lrp-result-table .lrp-result-val {
+    font-weight:600;
+    min-width:60px;
+    text-align:center;
+  }
+  .lrp-result-table .lrp-ref-val {
+    color:#666;
+    font-size:11px;
+    text-align:center;
+  }
+  .lrp-result-table .lrp-unit-val {
+    color:#888;
+    font-size:11px;
+  }
+  .lrp-result-table .lrp-blank {
+    color:#bbb;
+    font-style:italic;
+  }
+
+  /* ── Signatures ── */
+  .lrp-signatures {
+    display:flex;
+    justify-content:space-around;
+    margin-top:32px;
+    padding-top:12px;
+    font-size:11px;
+    text-align:center;
+  }
+  .lrp-sig-block {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:4px;
+  }
+  .lrp-sig-line {
+    width:180px;
+    border-bottom:1px solid #333;
+    margin-bottom:3px;
+  }
+  .lrp-sig-name { font-weight:700; font-size:12px; }
+  .lrp-sig-title { font-size:10px; color:#555; text-transform:uppercase; letter-spacing:.04em; }
+  .lrp-sig-license { font-size:9px; color:#888; }
+
+  /* ── Footer ── */
+  .lrp-footer {
+    margin-top:28px;
+    padding-top:14px;
+    border-top:1px solid #ddd;
+    font-size:9px;
+    color:#888;
+    line-height:1.6;
+  }
+  .lrp-footer strong { color:#555; font-style:italic; }
+
+  /* ── OTHERS row ── */
+  .lrp-others {
+    margin-top:12px;
+    padding:6px 8px;
+    border:1px solid #ddd;
+    border-radius:4px;
+    font-size:11px;
+    color:#555;
+    min-height:28px;
+  }
+  .lrp-others-label { font-weight:700; margin-bottom:2px; }
+
+  /* ── Print styles ── */
+  @media print {
+    body * { visibility:hidden; }
+    #lrpPrintArea, #lrpPrintArea * { visibility:visible; }
+    #lrpPrintArea {
+      position:absolute;
+      left:0;top:0;
+      width:100%;
+    }
+    .lrp-page {
+      border:none !important;
+      box-shadow:none !important;
+      border-radius:0 !important;
+      padding:20px 32px !important;
+      margin:0 !important;
+      page-break-after:always;
+      max-width:none;
+    }
+    .lrp-page:last-child { page-break-after:auto; }
+    .lrp-no-print { display:none !important; }
+
+    @page {
+      size:letter;
+      margin:15mm 12mm;
+    }
+  }
+</style>
+
+<script>
+/* ═══════════════════════════════════
+   LAB RESULTS PREVIEW MODULE
+═══════════════════════════════════ */
+var LRP = {
+  branchId: null,
+  allOrders: [],
+  filteredOrders: [],
+  selectedOrderId: null,
+  selectedOrderData: null,
+  categories: [],
+  activeCategory: null
+};
+
+/* ─── INIT / REFRESH ─── */
+function lrp_init() {
+  var branchId = APP.user && APP.user.branch_ids ? APP.user.branch_ids.split(',')[0].trim() : '';
+  LRP.branchId = branchId;
+  if (!branchId) return;
+  lrp_refresh();
+}
+
+function lrp_refresh() {
+  var list = document.getElementById('lrpOrderList');
+  if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-4);font-size:12px;">Loading...</div>';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);font-size:12px;">Failed to load orders.</div>';
+        return;
+      }
+      LRP.allOrders = (r.orders || []).filter(function(o) {
+        return o.encoded_count > 0;
+      });
+      lrp_filterOrders();
+    })
+    .withFailureHandler(function(e) {
+      if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--danger);font-size:12px;">Error: ' + _e((e&&e.message)||'Connection failed') + '</div>';
+    })
+    .getLabPreviewOrders(LRP.branchId);
+}
+
+function lrp_filterOrders() {
+  var search = (document.getElementById('lrpSearch') || {}).value || '';
+  search = search.toLowerCase().trim();
+  var status = (document.getElementById('lrpStatusFilter') || {}).value || '';
+
+  LRP.filteredOrders = LRP.allOrders.filter(function(o) {
+    if (status && o.status !== status) return false;
+    if (search) {
+      var hay = ((o.patient_name || '') + ' ' + (o.order_no || '') + ' ' + (o.order_id || '')).toLowerCase();
+      if (hay.indexOf(search) === -1) return false;
+    }
+    return true;
+  });
+
+  var countEl = document.getElementById('lrpOrderCount');
+  if (countEl) countEl.textContent = LRP.filteredOrders.length + ' order(s)';
+
+  lrp_renderOrderList();
+}
+
+function lrp_renderOrderList() {
+  var list = document.getElementById('lrpOrderList');
+  if (!list) return;
+
+  if (!LRP.filteredOrders.length) {
+    list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-4);font-size:12px;">No orders with encoded results found.</div>';
+    return;
+  }
+
+  var html = '';
+  LRP.filteredOrders.forEach(function(o) {
+    var isActive = LRP.selectedOrderId === o.order_id;
+    var statusColor = o.status === 'RELEASED' ? '#16a34a' : o.status === 'FOR_RELEASE' ? '#7c3aed' : 'var(--text-3)';
+    var statusLabel = (o.status || '').replace(/_/g, ' ');
+
+    html += '<div class="lrp-order-item' + (isActive ? ' active' : '') + '" onclick="lrp_selectOrder(\'' + _e(o.order_id) + '\')">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">'
+      + '<span style="font-size:10px;font-weight:800;color:var(--text-4);letter-spacing:.05em;">' + _e(o.order_no || o.order_id) + '</span>'
+      + '<span style="font-size:9px;font-weight:700;color:' + statusColor + ';background:' + statusColor + '15;padding:2px 8px;border-radius:10px;">' + _e(statusLabel) + '</span>'
+      + '</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--text-1);margin-bottom:3px;">' + _e(o.patient_name || 'Unknown') + '</div>'
+      + '<div style="font-size:10px;color:var(--text-4);">' + _e(o.encoded_count || 0) + ' service(s) encoded</div>'
+      + '</div>';
+  });
+  list.innerHTML = html;
+}
+
+/* ─── SELECT ORDER ─── */
+function lrp_selectOrder(orderId) {
+  LRP.selectedOrderId = orderId;
+  lrp_renderOrderList();
+
+  document.getElementById('lrpEmptyState').style.display = 'none';
+  document.getElementById('lrpPreviewContent').style.display = 'none';
+
+  var pane = document.getElementById('lrpRenderedPages');
+  if (pane) pane.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-4);font-size:12px;"><span class="spinner spinner-teal" style="display:inline-block;width:18px;height:18px;border-width:2px;"></span><br>Loading results...</div>';
+  document.getElementById('lrpPreviewContent').style.display = '';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        pane.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--danger);font-size:12px;">' + _e(r && r.message || 'Failed to load results.') + '</div>';
+        return;
+      }
+      LRP.selectedOrderData = r;
+      LRP.categories = r.categories || [];
+      LRP.activeCategory = null;
+      lrp_renderCategoryTabs();
+      lrp_renderAllPages();
+    })
+    .withFailureHandler(function(e) {
+      pane.innerHTML = '<div class="card" style="padding:20px;text-align:center;color:var(--danger);font-size:12px;">Error: ' + _e((e&&e.message)||'Failed') + '</div>';
+    })
+    .getLabPreviewData(LRP.branchId, orderId);
+}
+
+/* ─── CATEGORY TABS ─── */
+function lrp_renderCategoryTabs() {
+  var container = document.getElementById('lrpCategoryTabs');
+  if (!container) return;
+
+  var html = '<button class="lrp-cat-tab' + (!LRP.activeCategory ? ' active' : '') + '" onclick="lrp_filterCategory(null)">All</button>';
+  LRP.categories.forEach(function(cat) {
+    var isActive = LRP.activeCategory === cat.cat_id;
+    html += '<button class="lrp-cat-tab' + (isActive ? ' active' : '') + '" onclick="lrp_filterCategory(\'' + _e(cat.cat_id) + '\')">' + _e(cat.category_name) + '</button>';
+  });
+  container.innerHTML = html;
+}
+
+function lrp_filterCategory(catId) {
+  LRP.activeCategory = catId;
+  lrp_renderCategoryTabs();
+  lrp_renderAllPages();
+}
+
+/* ─── RENDER ALL PAGES ─── */
+function lrp_renderAllPages() {
+  var container = document.getElementById('lrpRenderedPages');
+  if (!container || !LRP.selectedOrderData) return;
+
+  var data = LRP.selectedOrderData;
+  var cats = data.categories || [];
+  var html = '';
+
+  cats.forEach(function(cat) {
+    if (LRP.activeCategory && LRP.activeCategory !== cat.cat_id) return;
+    html += lrp_renderCategoryPage(cat, data.patient, data.signatures);
+  });
+
+  if (!html) {
+    html = '<div class="card" style="padding:20px;text-align:center;color:var(--text-4);font-size:12px;">No results to display for this category.</div>';
+  }
+
+  container.innerHTML = '<div id="lrpPrintArea">' + html + '</div>';
+}
+
+/* ─── RENDER ONE CATEGORY PAGE ─── */
+function lrp_renderCategoryPage(cat, patient, signatures) {
+  var p = patient || {};
+  var sig = signatures || {};
+
+  var html = '<div class="lrp-page" data-cat="' + _e(cat.cat_id) + '">';
+
+  // Patient header
+  html += '<div class="lrp-header">'
+    + '<div class="lrp-header-left">'
+    + '<div><span class="lrp-header-label">Patient\'s Name:</span> <strong>' + _e(p.name || '') + '</strong></div>'
+    + '<div><span class="lrp-header-label">Birthdate:</span> ' + _e(p.birthdate || '') + '</div>'
+    + '<div><span class="lrp-header-label">Physician:</span> ' + _e(p.physician || '') + '</div>'
+    + '</div>'
+    + '<div class="lrp-header-right">'
+    + '<div><span class="lrp-header-label">Age:</span> ' + _e(p.age || '') + '</div>'
+    + '<div><span class="lrp-header-label">Sex:</span> ' + _e(p.sex || '') + '</div>'
+    + '<div><span class="lrp-header-label">Date:</span> ' + _e(p.date || '') + '</div>'
+    + '</div>'
+    + '</div>';
+
+  // Title banner
+  html += '<div class="lrp-title-banner">' + _e(cat.category_name || '').toUpperCase() + '</div>';
+
+  // Render services
+  var services = cat.services || [];
+
+  // Detect layout: do services have units and reference ranges?
+  var allParams = [];
+  services.forEach(function(svc) { allParams = allParams.concat(svc.params || []); });
+
+  var dataParams = allParams.filter(function(pp) {
+    var ft = (pp.field_type || 'numeric').toLowerCase();
+    return ft !== 'header' && ft !== 'subheader' && ft !== 'note';
+  });
+
+  var hasUnit = dataParams.some(function(pp) { return (pp.unit || '').trim() !== ''; });
+  var hasRef = dataParams.some(function(pp) { return (pp.reference_range || '').trim() !== ''; });
+
+  // Build table
+  var colCount = 2;
+  if (hasRef) colCount++;
+  if (hasUnit) colCount++;
+
+  html += '<table class="lrp-result-table"><thead><tr>';
+  html += '<th style="width:38%;">TEST</th>';
+  html += '<th style="width:' + (hasRef || hasUnit ? '18' : '62') + '%;text-align:center;">RESULT</th>';
+  if (hasRef) html += '<th style="width:22%;text-align:center;">REFERENCE VALUE</th>';
+  if (hasUnit) html += '<th style="width:12%;">UNIT</th>';
+  html += '</tr></thead><tbody>';
+
+  var multiService = services.length > 1;
+  var hasOthersField = false;
+  var othersValue = '';
+
+  services.forEach(function(svc) {
+    var params = (svc.params || []).slice().sort(function(a, b) {
+      return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0);
+    });
+
+    // For multi-service categories, show service name header if first param isn't a header
+    var firstIsHeader = params.length > 0 && (params[0].field_type || '').toLowerCase() === 'header';
+    if (multiService && !firstIsHeader) {
+      html += '<tr class="lrp-section-header"><td colspan="' + colCount + '">' + _e(svc.serv_name || '').toUpperCase() + '</td></tr>';
+    }
+
+    params.forEach(function(pp) {
+      var ft = (pp.field_type || 'numeric').toLowerCase();
+      var result = pp.result_value || '';
+      var paramName = pp.param_name || '';
+
+      // Handle OTHERS field specially
+      if (paramName.toUpperCase() === 'OTHERS') {
+        hasOthersField = true;
+        othersValue = result;
+        return;
+      }
+
+      if (ft === 'header') {
+        html += '<tr class="lrp-section-header"><td colspan="' + colCount + '">' + _e(paramName).toUpperCase() + '</td></tr>';
+        return;
+      }
+
+      if (ft === 'subheader') {
+        html += '<tr class="lrp-subheader"><td colspan="' + colCount + '">' + _e(paramName) + '</td></tr>';
+        return;
+      }
+
+      if (ft === 'note') {
+        html += '<tr class="lrp-note"><td>' + _e(paramName) + '</td><td colspan="' + (colCount - 1) + '">' + _e(result) + '</td></tr>';
+        return;
+      }
+
+      var indent = pp.indent || 0;
+      var resultDisplay = result ? _e(result) : '<span class="lrp-blank">blank</span>';
+      var refLines = (pp.reference_range || '').split('\n');
+
+      html += '<tr' + (indent ? ' class="lrp-indent"' : '') + '>';
+      html += '<td>' + _e(paramName) + '</td>';
+      html += '<td class="lrp-result-val">' + resultDisplay + '</td>';
+      if (hasRef) html += '<td class="lrp-ref-val">' + _e(refLines[0] || '') + '</td>';
+      if (hasUnit) html += '<td class="lrp-unit-val">' + _e(pp.unit || '') + '</td>';
+      html += '</tr>';
+
+      // Multi-line reference ranges
+      if (hasRef && refLines.length > 1) {
+        for (var ri = 1; ri < refLines.length; ri++) {
+          html += '<tr><td></td><td></td>';
+          html += '<td class="lrp-ref-val">' + _e(refLines[ri]) + '</td>';
+          if (hasUnit) html += '<td></td>';
+          html += '</tr>';
+        }
+      }
+
+      // Sub-label (e.g. "Antigen Screening Test")
+      if (pp.sub_label) {
+        html += '<tr class="lrp-sublabel"><td colspan="' + colCount + '">&nbsp;&nbsp;&nbsp;&nbsp;<em>' + _e(pp.sub_label) + '</em></td></tr>';
+      }
+    });
+  });
+
+  html += '</tbody></table>';
+
+  // OTHERS section
+  if (hasOthersField) {
+    html += '<div class="lrp-others"><div class="lrp-others-label">OTHERS:</div>' + _e(othersValue || '') + '</div>';
+  }
+
+  // Signatures
+  html += '<div class="lrp-signatures">';
+  html += '<div class="lrp-sig-block">';
+  if (sig.medtech_signature_url) html += '<img src="' + _e(sig.medtech_signature_url) + '" style="height:45px;margin-bottom:2px;" onerror="this.style.display=\'none\'">';
+  html += '<div class="lrp-sig-line"></div>';
+  html += '<div class="lrp-sig-name">' + _e(sig.medtech_name || '') + '</div>';
+  html += '<div class="lrp-sig-title">Medical Technologist</div>';
+  if (sig.medtech_license_no) html += '<div class="lrp-sig-license">LIC. NO. ' + _e(sig.medtech_license_no) + '</div>';
+  html += '</div>';
+
+  html += '<div class="lrp-sig-block">';
+  if (sig.pathologist_signature_url) html += '<img src="' + _e(sig.pathologist_signature_url) + '" style="height:45px;margin-bottom:2px;" onerror="this.style.display=\'none\'">';
+  html += '<div class="lrp-sig-line"></div>';
+  html += '<div class="lrp-sig-name">' + _e(sig.pathologist_name || '') + '</div>';
+  html += '<div class="lrp-sig-title">Pathologist</div>';
+  if (sig.pathologist_license_no) html += '<div class="lrp-sig-license">LIC. NO. ' + _e(sig.pathologist_license_no) + '</div>';
+  html += '</div>';
+  html += '</div>';
+
+  // Footer
+  html += '<div class="lrp-footer">'
+    + '<strong>NOTE: CORRELATE CLINICALLY.</strong><br>'
+    + '<em>Clinical Diagnosis should not be established based on this single test result.</em><br>'
+    + '<em>All individuals are strongly encouraged to consult their own health care provider to evaluate test result.</em>'
+    + '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+/* ─── PRINT ─── */
+function lrp_printAll() {
+  var printArea = document.getElementById('lrpPrintArea');
+  if (!printArea || !printArea.innerHTML.trim()) {
+    toast('warning', 'No results to print.');
+    return;
+  }
+  window.print();
+}
+
+/* ─── HTML ESCAPE (reuse existing _e if available) ─── */
+if (typeof _e !== 'function') {
+  function _e(s) {
+    var d = document.createElement('div');
+    d.textContent = s == null ? '' : String(s);
+    return d.innerHTML;
+  }
+}
+</script>

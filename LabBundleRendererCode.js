@@ -674,3 +674,182 @@ function _resolvePatientFolder_(branchId, patient) {
     return null;
   }
 }
+
+// ============================================================
+// LAB RESULTS PREVIEW — Backend helpers for the HTML preview page
+// ============================================================
+
+// ─── GET ORDERS WITH ENCODED LAB RESULTS ─────────────────────
+// Returns a list of orders that have at least one encoded lab item,
+// suitable for the preview order-picker.
+function getLabPreviewOrders(branchId) {
+  try {
+    if (!branchId) return { success: false, message: 'Branch ID required.' };
+
+    var mss = getSS_();
+    var brSh = mss.getSheetByName('Branches');
+    if (!brSh) return { success: false, message: 'Branches sheet not found.' };
+
+    var brRows = brSh.getRange(2, 1, brSh.getLastRow() - 1, 8).getValues();
+    var br = brRows.find(function (r) { return String(r[0]).trim() === branchId; });
+    if (!br || !br[7]) return { success: false, message: 'Branch spreadsheet not configured.' };
+
+    var bss = SpreadsheetApp.openById(String(br[7]).trim());
+    var ordSh = bss.getSheetByName('LAB_ORDER');
+    var itemSh = bss.getSheetByName('LAB_ORDER_ITEM');
+    var patSh = bss.getSheetByName('Patients');
+
+    if (!ordSh || ordSh.getLastRow() < 2) return { success: true, orders: [] };
+
+    // Build patient map
+    var patMap = {};
+    if (patSh && patSh.getLastRow() >= 2) {
+      patSh.getRange(2, 1, patSh.getLastRow() - 1, 6).getValues().forEach(function (r) {
+        var pid = String(r[0] || '').trim();
+        if (pid) patMap[pid] = {
+          name: (String(r[1] || '').trim() + ', ' + String(r[2] || '').trim()).replace(/,\s*$/, '').trim(),
+          sex: String(r[4] || '').trim()
+        };
+      });
+    }
+
+    // Count encoded items per order
+    var encodedCounts = {};
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      var iCols = Math.max(itemSh.getLastColumn(), 16);
+      itemSh.getRange(2, 1, itemSh.getLastRow() - 1, iCols).getValues().forEach(function (r) {
+        var oid = String(r[1] || '').trim();
+        if (oid && r[15]) {
+          encodedCounts[oid] = (encodedCounts[oid] || 0) + 1;
+        }
+      });
+    }
+
+    // Build order list
+    var oCols = Math.max(ordSh.getLastColumn(), 20);
+    var oRows = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, oCols).getValues();
+    var orders = [];
+
+    oRows.forEach(function (r) {
+      var oid = String(r[0] || '').trim();
+      if (!oid) return;
+      var count = encodedCounts[oid] || 0;
+      if (count === 0) return;
+
+      var patientId = String(r[3] || '').trim();
+      var pat = patMap[patientId] || {};
+      var orderType = String(r[6] || '').trim().toUpperCase();
+
+      // Skip X-Ray orders
+      if (orderType === 'XRAY' || orderType === 'X-RAY') return;
+
+      orders.push({
+        order_id: oid,
+        order_no: String(r[1] || '').trim(),
+        patient_id: patientId,
+        patient_name: String(r[11] || pat.name || '').trim(),
+        status: String(r[5] || '').trim(),
+        encoded_count: count,
+        order_date: r[2] ? formatShortDate_(r[2]) : ''
+      });
+    });
+
+    // Sort by most recent first
+    orders.reverse();
+
+    return { success: true, orders: orders };
+  } catch (e) {
+    Logger.log('getLabPreviewOrders ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ─── GET FULL LAB PREVIEW DATA FOR AN ORDER ──────────────────
+// Returns patient info, categories with services and their params/results,
+// and signature data — everything needed to render the HTML preview.
+function getLabPreviewData(branchId, orderId) {
+  try {
+    if (!branchId || !orderId) return { success: false, message: 'branchId and orderId required.' };
+
+    // 1. Fetch patient info
+    var patient = _fetchPatientForOrder_(branchId, orderId);
+
+    // 2. Fetch all encoded lab items
+    var items = _getEncodedLabItemsForOrder_(branchId, orderId);
+    var catCache = {};
+    var groups = {};
+    var catOrder = [];
+
+    items.forEach(function (it) {
+      if (!it.raw_values) return;
+      var catInfo = _getCategoryForService_(it.serv_id, catCache);
+
+      if (!groups[catInfo.cat_id]) {
+        groups[catInfo.cat_id] = { cat_id: catInfo.cat_id, category_name: catInfo.category_name, services: [] };
+        catOrder.push(catInfo.cat_id);
+      }
+
+      var params = it.raw_values.map(function (p) {
+        return {
+          param_name: p.param_name,
+          unit: p.unit || '',
+          reference_range: p.reference_range || '',
+          field_type: p.field_type || 'numeric',
+          sort_order: p.sort_order || 0,
+          sub_label: p.sub_label || '',
+          indent: p.indent || 0,
+          result_value: p.result_value || ''
+        };
+      });
+
+      groups[catInfo.cat_id].services.push({
+        serv_id: it.serv_id,
+        serv_name: it.serv_name,
+        params: params
+      });
+    });
+
+    if (catOrder.length === 0) {
+      return { success: false, message: 'No encoded lab results with param data found for this order.' };
+    }
+
+    // 3. Collect signature info
+    var signatures = {};
+    try {
+      if (patient.medtech_name) {
+        signatures.medtech_name = patient.medtech_name;
+        signatures.medtech_cred = patient.medtech_cred || '';
+        signatures.medtech_license_no = patient.medtech_license_no || '';
+        signatures.medtech_signature_url = patient.medtech_signature_url || '';
+      }
+      if (patient.pathologist_name) {
+        signatures.pathologist_name = patient.pathologist_name;
+        signatures.pathologist_cred = patient.pathologist_cred || '';
+        signatures.pathologist_license_no = patient.pathologist_license_no || '';
+        signatures.pathologist_signature_url = patient.pathologist_signature_url || '';
+      }
+    } catch (e) {}
+
+    // 4. Format patient for display
+    var now = formatShortDate_(new Date());
+    var displayPatient = {
+      name: (patient.name || '').toUpperCase(),
+      age: patient.age || '',
+      sex: (patient.sex || '').toUpperCase(),
+      birthdate: patient.birthdate || '',
+      physician: patient.physician || '',
+      company: patient.company || '',
+      date: now
+    };
+
+    return {
+      success: true,
+      patient: displayPatient,
+      signatures: signatures,
+      categories: catOrder.map(function (cid) { return groups[cid]; })
+    };
+  } catch (e) {
+    Logger.log('getLabPreviewData ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
