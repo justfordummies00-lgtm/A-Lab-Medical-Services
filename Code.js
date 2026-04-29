@@ -403,46 +403,63 @@ function saveTemplateSettings(branchId, settings) {
   }
 }
 
-function _getTemplatesFolder_() {
-  var rootId = getSettingValue_('alab_root_folder_id', '');
-  if (rootId) {
-    var root = DriveApp.getFolderById(rootId);
-    var tf = root.getFoldersByName('Templates');
-    var templatesFolder = tf.hasNext() ? tf.next() : root.createFolder('Templates');
-    var hf = templatesFolder.getFoldersByName('Headers');
-    return hf.hasNext() ? hf.next() : templatesFolder.createFolder('Headers');
-  }
-  var fb = DriveApp.getRootFolder().getFoldersByName('A-Lab Templates');
-  return fb.hasNext() ? fb.next() : DriveApp.getRootFolder().createFolder('A-Lab Templates');
-}
 
 function uploadTemplateHeaderImage(branchId, base64Data, mimeType) {
   try {
     if (!base64Data || !branchId) return { success: false, message: 'Missing data.' };
-    const folder = _getTemplatesFolder_();
-    const ext = mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
-    const name = 'template_header_' + branchId + ext;
-    const old = folder.getFilesByName(name);
+
+    // Resolve target folder using safe Drive access (same pattern as ResultTemplatesCode.js)
+    var targetFolder = null;
+    try {
+      var rawRootId = getSettingValue_('alab_root_folder_id', '');
+      var rootId = extractDriveFileId_(rawRootId) || rawRootId;
+      if (rootId) {
+        var rootFolder = DriveApp.getFolderById(rootId);
+        var tf = rootFolder.getFoldersByName('Templates');
+        var templatesFolder = tf.hasNext() ? tf.next() : rootFolder.createFolder('Templates');
+        var hf = templatesFolder.getFoldersByName('Headers');
+        targetFolder = hf.hasNext() ? hf.next() : templatesFolder.createFolder('Headers');
+      }
+    } catch (folderErr) {
+      Logger.log('uploadTemplateHeaderImage folder error: ' + folderErr.message
+        + '. Script account: ' + getEffectiveUserEmail_());
+    }
+
+    if (!targetFolder) {
+      var fb = DriveApp.getFoldersByName('A-Lab Templates');
+      targetFolder = fb.hasNext() ? fb.next() : DriveApp.createFolder('A-Lab Templates');
+    }
+
+    var ext = mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
+    var name = 'template_header_' + branchId + ext;
+    var old = targetFolder.getFilesByName(name);
     while (old.hasNext()) old.next().setTrashed(true);
-    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
-    const file = folder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w800';
+    var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
+    var file = targetFolder.createFile(blob);
+
+    // Safe sharing — do not fail upload if Workspace blocks link sharing
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      Logger.log('Could not set ANYONE_WITH_LINK sharing on header image: ' + shareErr.message);
+    }
+
+    var url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w800';
     // Save URL into template settings
-    const key = 'lab_template_settings_' + branchId;
-    const ss = getSS_();
-    let sh = ss.getSheetByName('System_Settings');
+    var key = 'lab_template_settings_' + branchId;
+    var ss = getSS_();
+    var sh = ss.getSheetByName('System_Settings');
     if (!sh) {
       sh = ss.insertSheet('System_Settings');
       sh.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
       sh.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
       sh.setFrozenRows(1);
     }
-    const lr = sh.getLastRow();
-    let existing = {};
-    let idx = -1;
+    var lr = sh.getLastRow();
+    var existing = {};
+    var idx = -1;
     if (lr >= 2) {
-      const rows = sh.getRange(2, 1, lr - 1, 2).getValues();
+      var rows = sh.getRange(2, 1, lr - 1, 2).getValues();
       idx = rows.findIndex(function(r) { return String(r[0]).trim() === key; });
       if (idx !== -1) {
         try { existing = JSON.parse(String(rows[idx][1] || '{}')); } catch(e) {}
