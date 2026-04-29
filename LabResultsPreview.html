@@ -103,6 +103,20 @@
     min-height:11in;
     position:relative;
     box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+  }
+  .lrp-bottom-section {
+    margin-top:auto;
+  }
+  .lrp-page-footer {
+    margin-top:8px;
+    padding-top:8px;
+    border-top:1.5px solid #333;
+    font-size:9px;
+    color:#555;
+    text-align:center;
+    line-height:1.8;
   }
 
   /* ── Header block ── */
@@ -292,7 +306,8 @@ var LRP = {
   selectedOrderId: null,
   selectedOrderData: null,
   categories: [],
-  activeCategory: null
+  activeCategory: null,
+  templateSettings: {}
 };
 
 /* ─── INIT / REFRESH ─── */
@@ -300,6 +315,14 @@ function lrp_init() {
   var branchId = APP.user && APP.user.branch_ids ? APP.user.branch_ids.split(',')[0].trim() : '';
   LRP.branchId = branchId;
   if (!branchId) return;
+  // Load template settings for this branch
+  google.script.run
+    .withSuccessHandler(function(r) {
+      LRP.templateSettings = (r && r.success && r.data) ? r.data : {};
+      if (LRP.selectedOrderData) lrp_renderAllPages();
+    })
+    .withFailureHandler(function() { LRP.templateSettings = {}; })
+    .getTemplateSettings(branchId);
   lrp_refresh();
 }
 
@@ -420,6 +443,53 @@ function lrp_filterCategory(catId) {
   lrp_renderAllPages();
 }
 
+/* ─── ESTIMATE ROW COUNT PER SERVICE ─── */
+function lrp_estimateServiceRows(svc) {
+  var params = svc.params || [];
+  var rows = 2; // table header + service label
+  params.forEach(function(pp) {
+    if ((pp.param_name || '').toUpperCase() === 'OTHERS') return;
+    rows++;
+    var refLines = (pp.reference_range || '').split('\n');
+    if (refLines.length > 1) rows += refLines.length - 1;
+  });
+  return rows;
+}
+
+/* ─── SPLIT CATEGORY INTO PAGE-SIZED GROUPS ─── */
+function lrp_splitCategoryServices(cat) {
+  var services = cat.services || [];
+  if (services.length <= 1) return [cat];
+
+  var MAX_ROWS = 20;
+  var groups = [];
+  var currentGroup = [];
+  var currentRows = 0;
+
+  services.forEach(function(svc) {
+    var svcRows = lrp_estimateServiceRows(svc);
+    if (currentGroup.length > 0 && (currentRows + svcRows) > MAX_ROWS) {
+      groups.push(currentGroup);
+      currentGroup = [svc];
+      currentRows = svcRows;
+    } else {
+      currentGroup.push(svc);
+      currentRows += svcRows;
+    }
+  });
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  return groups.map(function(grp, idx) {
+    return {
+      cat_id: cat.cat_id,
+      category_name: cat.category_name,
+      services: grp,
+      _pageIndex: idx,
+      _totalPages: groups.length
+    };
+  });
+}
+
 /* ─── RENDER ALL PAGES ─── */
 function lrp_renderAllPages() {
   var container = document.getElementById('lrpRenderedPages');
@@ -431,7 +501,10 @@ function lrp_renderAllPages() {
 
   cats.forEach(function(cat) {
     if (LRP.activeCategory && LRP.activeCategory !== cat.cat_id) return;
-    html += lrp_renderCategoryPage(cat, data.patient, data.signatures);
+    var pages = lrp_splitCategoryServices(cat);
+    pages.forEach(function(pageCat) {
+      html += lrp_renderCategoryPage(pageCat, data.patient, data.signatures);
+    });
   });
 
   if (!html) {
@@ -446,7 +519,13 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
   var p = patient || {};
   var sig = signatures || {};
 
+  var ts = LRP.templateSettings || {};
   var html = '<div class="lrp-page" data-cat="' + _e(cat.cat_id) + '">';
+
+  // Header image (from template settings)
+  if (ts.header_image_url) {
+    html += '<div style="text-align:center;margin-bottom:10px;"><img src="' + _e(ts.header_image_url) + '" style="max-width:100%;max-height:100px;object-fit:contain;" onerror="this.style.display=\'none\'"></div>';
+  }
 
   // Patient header
   html += '<div class="lrp-header">'
@@ -463,7 +542,11 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
     + '</div>';
 
   // Title banner
-  html += '<div class="lrp-title-banner">' + _e(cat.category_name || '').toUpperCase() + '</div>';
+  var titleText = _e(cat.category_name || '').toUpperCase();
+  if (cat._totalPages && cat._totalPages > 1) {
+    titleText += ' (Page ' + (cat._pageIndex + 1) + ' of ' + cat._totalPages + ')';
+  }
+  html += '<div class="lrp-title-banner">' + titleText + '</div>';
 
   // Render services — each service gets its own table with appropriate columns
   var services = cat.services || [];
@@ -560,6 +643,9 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
     html += '<div class="lrp-others"><div class="lrp-others-label">OTHERS:</div>' + _e(othersValue || '') + '</div>';
   }
 
+  // ── Bottom section: pushed to bottom of page via flexbox ──
+  html += '<div class="lrp-bottom-section">';
+
   // Signatures
   html += '<div class="lrp-signatures">';
   html += '<div class="lrp-sig-block">';
@@ -579,12 +665,28 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
   html += '</div>';
   html += '</div>';
 
-  // Footer
-  html += '<div class="lrp-footer">'
-    + '<strong>NOTE: CORRELATE CLINICALLY.</strong><br>'
-    + '<em>Clinical Diagnosis should not be established based on this single test result.</em><br>'
-    + '<em>All individuals are strongly encouraged to consult their own health care provider to evaluate test result.</em>'
-    + '</div>';
+  // Clinical note (from template settings or default)
+  var noteText = ('clinical_note' in ts) ? ts.clinical_note : 'NOTE: CORRELATE CLINICALLY.\nClinical Diagnosis should not be established based on this single test result.\nAll individuals are strongly encouraged to consult their own health care provider to evaluate test result.';
+  if (noteText && noteText.trim()) {
+    var noteLines = noteText.split('\n');
+    html += '<div class="lrp-footer">';
+    noteLines.forEach(function(line, i) {
+      if (i === 0) html += '<strong>' + _e(line) + '</strong><br>';
+      else html += '<em>' + _e(line) + '</em><br>';
+    });
+    html += '</div>';
+  }
+
+  // Page footer (from template settings — social media, contact info)
+  if (ts.footer_text && ts.footer_text.trim()) {
+    html += '<div class="lrp-page-footer">';
+    ts.footer_text.split('\n').forEach(function(line) {
+      html += _e(line) + '<br>';
+    });
+    html += '</div>';
+  }
+
+  html += '</div>'; // close lrp-bottom-section
 
   html += '</div>';
   return html;

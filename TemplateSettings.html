@@ -1,0 +1,353 @@
+<!-- TEMPLATE SETTINGS PAGE -->
+<div class="page-view" id="page-template-settings">
+
+  <div class="section-header">
+    <div>
+      <div class="section-title" style="font-size:20px;">Template Settings</div>
+      <div class="section-sub">Configure header image, footer, and clinical note for lab result templates</div>
+    </div>
+    <button class="btn btn-secondary btn-sm" onclick="ts_load()" id="tsRefreshBtn">
+      <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+
+  <!-- Loading skeleton -->
+  <div id="tsSkeleton" style="display:flex;flex-direction:column;gap:12px;">
+    <div class="card" style="padding:20px 24px;">
+      <div style="height:14px;width:200px;border-radius:6px;background:linear-gradient(90deg,#f0f2f7 25%,#e4e8f0 50%,#f0f2f7 75%);background-size:400px 100%;animation:shimmer 1.3s infinite;margin-bottom:16px;"></div>
+      <div style="height:80px;border-radius:8px;background:linear-gradient(90deg,#f0f2f7 25%,#e4e8f0 50%,#f0f2f7 75%);background-size:400px 100%;animation:shimmer 1.3s infinite;"></div>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div id="tsContent" style="display:none;flex-direction:column;gap:16px;">
+
+    <!-- ═══ HEADER IMAGE SECTION ═══ -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:9px;background:rgba(14,165,233,.1);border:1px solid rgba(14,165,233,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="17" height="17" fill="none" stroke="#0ea5e9" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:var(--text-1);">Header Image</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:1px;">Banner displayed at the top of every lab result page (per branch)</div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:20px 24px;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div id="tsHeaderPreview" style="width:360px;height:90px;border:1.5px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--gray-50);">
+            <span style="font-size:11px;color:var(--text-4);">No header image uploaded</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <input type="file" id="tsHeaderFile" accept="image/*" style="display:none;" onchange="ts_uploadHeader(this)">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('tsHeaderFile').click()" id="tsHeaderUploadBtn">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+              Upload Header Image
+            </button>
+            <button class="btn btn-secondary btn-sm" onclick="ts_removeHeader()" id="tsHeaderRemoveBtn" style="display:none;color:var(--danger);border-color:var(--danger);">
+              <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+              Remove
+            </button>
+            <div id="tsHeaderStatus" style="font-size:11px;color:var(--text-4);"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ CLINICAL NOTE SECTION ═══ -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:36px;height:36px;border-radius:9px;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+            <svg width="17" height="17" fill="none" stroke="#f59e0b" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:800;color:var(--text-1);">Clinical Disclaimer Note</div>
+            <div style="font-size:12px;color:var(--text-3);margin-top:1px;">Text shown at the bottom of every result page, above the footer</div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="ts_save()" id="tsNoteSaveBtn" style="background:var(--teal-600);border-color:var(--teal-600);">
+          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+          </svg>
+          Save All
+        </button>
+      </div>
+      <div style="padding:20px 24px;">
+        <textarea id="tsClinicalNote" class="f-inp" rows="4" style="font-size:12px;font-style:italic;resize:vertical;" placeholder="e.g. NOTE: CORRELATE CLINICALLY.&#10;Clinical Diagnosis should not be established based on this single test result."></textarea>
+        <div style="font-size:11px;color:var(--text-4);margin-top:6px;">Each line will be displayed separately. Leave empty to hide the note.</div>
+      </div>
+    </div>
+
+    <!-- ═══ FOOTER SECTION ═══ -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:9px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="17" height="17" fill="none" stroke="#6366f1" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--text-1);">Page Footer</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:1px;">Contact info displayed at the very bottom of every page (social media, email, etc.)</div>
+        </div>
+      </div>
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label class="f-label">Footer Text</label>
+          <textarea id="tsFooterText" class="f-inp" rows="3" style="font-size:12px;resize:vertical;" placeholder="e.g. A-LAB Diagnostic Center | @alabdiagnosticcenter | medicalservicesalab@gmail.com"></textarea>
+          <div style="font-size:11px;color:var(--text-4);margin-top:4px;">Each line will be displayed separately. Use this for contact details, social media, address, etc.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ LIVE PREVIEW ═══ -->
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:9px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+          <svg width="17" height="17" fill="none" stroke="#10b981" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+          </svg>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:800;color:var(--text-1);">Live Preview</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:1px;">How the header, note, and footer will look on a printed result</div>
+        </div>
+      </div>
+      <div style="padding:20px 24px;display:flex;justify-content:center;">
+        <div id="tsLivePreview" style="width:8.5in;border:1px solid #e5e7eb;border-radius:6px;padding:32px 40px;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.06);font-family:'Geist',Arial,sans-serif;min-height:400px;display:flex;flex-direction:column;">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════
+   TEMPLATE SETTINGS MODULE
+═══════════════════════════════════ */
+var TS = {
+  branchId: null,
+  settings: {}
+};
+
+function ts_getBranchId() {
+  return APP.user && APP.user.branch_ids ? APP.user.branch_ids.split(',')[0].trim() : '';
+}
+
+function ts_init() {
+  TS.branchId = ts_getBranchId();
+  if (!TS.branchId) return;
+  ts_load();
+}
+
+function ts_load() {
+  var skel = document.getElementById('tsSkeleton');
+  var content = document.getElementById('tsContent');
+  if (skel) skel.style.display = 'flex';
+  if (content) content.style.display = 'none';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (skel) skel.style.display = 'none';
+      if (content) content.style.display = 'flex';
+      if (!r || !r.success) {
+        toast('error', (r && r.message) || 'Failed to load template settings.');
+        return;
+      }
+      TS.settings = r.data || {};
+      ts_populate();
+    })
+    .withFailureHandler(function(e) {
+      if (skel) skel.style.display = 'none';
+      if (content) content.style.display = 'flex';
+      toast('error', (e && e.message) || 'Connection error.');
+    })
+    .getTemplateSettings(TS.branchId);
+}
+
+function ts_populate() {
+  var s = TS.settings;
+  // Header image
+  var preview = document.getElementById('tsHeaderPreview');
+  var removeBtn = document.getElementById('tsHeaderRemoveBtn');
+  if (s.header_image_url) {
+    preview.innerHTML = '<img src="' + _e(s.header_image_url) + '" style="max-width:100%;max-height:100%;object-fit:contain;">';
+    removeBtn.style.display = '';
+  } else {
+    preview.innerHTML = '<span style="font-size:11px;color:var(--text-4);">No header image uploaded</span>';
+    removeBtn.style.display = 'none';
+  }
+  // Clinical note
+  var noteEl = document.getElementById('tsClinicalNote');
+  if (noteEl) noteEl.value = s.clinical_note || '';
+  // Footer
+  var footerEl = document.getElementById('tsFooterText');
+  if (footerEl) footerEl.value = s.footer_text || '';
+  // Update preview
+  ts_updatePreview();
+}
+
+function ts_updatePreview() {
+  var container = document.getElementById('tsLivePreview');
+  if (!container) return;
+
+  var s = TS.settings;
+  var noteEl = document.getElementById('tsClinicalNote');
+  var footerEl = document.getElementById('tsFooterText');
+  var noteVal = noteEl ? noteEl.value : (s.clinical_note || '');
+  var footerVal = footerEl ? footerEl.value : (s.footer_text || '');
+
+  var html = '';
+  // Header
+  if (s.header_image_url) {
+    html += '<div style="text-align:center;margin-bottom:12px;"><img src="' + _e(s.header_image_url) + '" style="max-width:100%;max-height:100px;object-fit:contain;"></div>';
+  } else {
+    html += '<div style="text-align:center;padding:24px;border:1.5px dashed #ddd;border-radius:6px;color:#aaa;font-size:12px;margin-bottom:12px;">Header image will appear here</div>';
+  }
+
+  // Patient info placeholder
+  html += '<div style="font-size:11px;color:#888;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:12px;">'
+    + '<div><strong>Patient\'s Name:</strong> Juan Dela Cruz &nbsp;&nbsp; <strong>Age/Sex:</strong> 30 / Male</div>'
+    + '<div><strong>Birthdate:</strong> 01/15/1996 &nbsp;&nbsp; <strong>Date:</strong> 04/29/2026</div>'
+    + '</div>';
+
+  // Body placeholder
+  html += '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:14px;font-style:italic;border:1px dashed #eee;border-radius:4px;min-height:120px;">Lab results content area</div>';
+
+  // Signatures placeholder
+  html += '<div style="display:flex;justify-content:space-around;margin-top:24px;padding-top:12px;font-size:10px;color:#888;">'
+    + '<div style="text-align:center;"><div style="width:140px;border-bottom:1px solid #aaa;margin-bottom:4px;">&nbsp;</div>Medical Technologist</div>'
+    + '<div style="text-align:center;"><div style="width:140px;border-bottom:1px solid #aaa;margin-bottom:4px;">&nbsp;</div>Pathologist</div>'
+    + '</div>';
+
+  // Clinical note
+  if (noteVal.trim()) {
+    var noteLines = noteVal.split('\n');
+    html += '<div style="margin-top:16px;padding-top:8px;border-top:1px solid #ddd;font-size:9px;color:#888;line-height:1.6;">';
+    noteLines.forEach(function(line, i) {
+      if (i === 0) html += '<strong>' + _e(line) + '</strong><br>';
+      else html += '<em>' + _e(line) + '</em><br>';
+    });
+    html += '</div>';
+  }
+
+  // Footer
+  if (footerVal.trim()) {
+    html += '<div style="margin-top:12px;padding-top:8px;border-top:1.5px solid #333;font-size:9px;color:#555;text-align:center;line-height:1.8;">';
+    footerVal.split('\n').forEach(function(line) {
+      html += _e(line) + '<br>';
+    });
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function ts_uploadHeader(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var statusEl = document.getElementById('tsHeaderStatus');
+  var btn = document.getElementById('tsHeaderUploadBtn');
+
+  statusEl.textContent = 'Uploading...';
+  statusEl.style.color = 'var(--text-4)';
+  btn.disabled = true;
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    var base64 = dataUrl.split(',')[1];
+    var mimeType = file.type || 'image/png';
+
+    google.script.run
+      .withSuccessHandler(function(r) {
+        btn.disabled = false;
+        if (!r || !r.success) {
+          statusEl.textContent = (r && r.message) || 'Upload failed.';
+          statusEl.style.color = 'var(--danger)';
+          return;
+        }
+        statusEl.textContent = 'Uploaded!';
+        statusEl.style.color = 'var(--success)';
+        TS.settings.header_image_url = r.url;
+        ts_populate();
+      })
+      .withFailureHandler(function(e) {
+        btn.disabled = false;
+        statusEl.textContent = (e && e.message) || 'Upload error.';
+        statusEl.style.color = 'var(--danger)';
+      })
+      .uploadTemplateHeaderImage(TS.branchId, base64, mimeType);
+  };
+  reader.readAsDataURL(file);
+}
+
+function ts_removeHeader() {
+  TS.settings.header_image_url = '';
+  ts_populate();
+  ts_save();
+}
+
+function ts_save() {
+  var noteEl = document.getElementById('tsClinicalNote');
+  var footerEl = document.getElementById('tsFooterText');
+  var btn = document.getElementById('tsNoteSaveBtn');
+
+  var payload = {
+    clinical_note: noteEl ? noteEl.value : '',
+    footer_text: footerEl ? footerEl.value : '',
+    header_image_url: TS.settings.header_image_url || ''
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save All';
+      if (r && r.success) {
+        toast('success', 'Template settings saved.');
+        TS.settings.clinical_note = payload.clinical_note;
+        TS.settings.footer_text = payload.footer_text;
+        ts_updatePreview();
+      } else {
+        toast('error', (r && r.message) || 'Failed to save.');
+      }
+    })
+    .withFailureHandler(function(e) {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save All';
+      toast('error', (e && e.message) || 'Connection error.');
+    })
+    .saveTemplateSettings(TS.branchId, payload);
+}
+
+// Live preview updates on text change
+(function() {
+  var debounce;
+  function onInput() {
+    clearTimeout(debounce);
+    debounce = setTimeout(ts_updatePreview, 300);
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var noteEl = document.getElementById('tsClinicalNote');
+    var footerEl = document.getElementById('tsFooterText');
+    if (noteEl) noteEl.addEventListener('input', onInput);
+    if (footerEl) footerEl.addEventListener('input', onInput);
+  });
+})();
+</script>

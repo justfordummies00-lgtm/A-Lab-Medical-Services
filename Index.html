@@ -159,6 +159,12 @@
           </svg>
           <span class="sb-nav-label">Results Preview</span>
         </a>
+        <a class="sb-nav-item" data-page="template-settings" data-label="Template Settings" onclick="navigateTo('template-settings')">
+          <svg class="sb-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+          </svg>
+          <span class="sb-nav-label">Template Settings</span>
+        </a>
         <a class="sb-nav-item" data-page="orders" data-label="Orders" onclick="navigateTo('orders')">
           <svg class="sb-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -433,6 +439,7 @@
       <?!= include('DoctorDashboard') ?>
       <?!= include('TechDashboard') ?>
       <?!= include('LabResultsPreview') ?>
+      <?!= include('TemplateSettings') ?>
       <?!= include('ReceptionistDashboard') ?>
       <?!= include('LiaisonDashboard') ?>
       <?!= include('Reports') ?>

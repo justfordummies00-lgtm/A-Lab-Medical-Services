@@ -352,6 +352,102 @@ function _getSignaturesFolder_(branchId) {
   return fb.hasNext() ? fb.next() : DriveApp.getRootFolder().createFolder('A-Lab Signatures');
 }
 
+// ── TEMPLATE SETTINGS (per branch) ───────────────────────────
+// Stored in System_Settings as lab_template_settings_{branchId} → JSON
+function getTemplateSettings(branchId) {
+  try {
+    if (!branchId) return { success: false, message: 'Branch ID required.' };
+    const key = 'lab_template_settings_' + branchId;
+    const raw = getSettingValue_(key, '{}');
+    let data = {};
+    try { data = JSON.parse(raw); } catch(e) {}
+    return { success: true, data: data };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function saveTemplateSettings(branchId, settings) {
+  try {
+    if (!branchId) return { success: false, message: 'Branch ID required.' };
+    const key = 'lab_template_settings_' + branchId;
+    const ss = getSS_();
+    let sh = ss.getSheetByName('System_Settings');
+    if (!sh) {
+      sh = ss.insertSheet('System_Settings');
+      sh.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
+      sh.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
+      sh.setFrozenRows(1);
+    }
+    // Merge with existing (preserve header_image_url if not provided)
+    const lr = sh.getLastRow();
+    let existing = {};
+    let idx = -1;
+    if (lr >= 2) {
+      const rows = sh.getRange(2, 1, lr - 1, 2).getValues();
+      idx = rows.findIndex(function(r) { return String(r[0]).trim() === key; });
+      if (idx !== -1) {
+        try { existing = JSON.parse(String(rows[idx][1] || '{}')); } catch(e) {}
+      }
+    }
+    const merged = Object.assign({}, existing, settings || {});
+    if (idx !== -1) {
+      sh.getRange(idx + 2, 2).setValue(JSON.stringify(merged));
+    } else {
+      sh.appendRow([key, JSON.stringify(merged)]);
+    }
+    writeAuditLog_('TEMPLATE_SETTINGS_SAVE', { branch_id: branchId });
+    return { success: true };
+  } catch(e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function uploadTemplateHeaderImage(branchId, base64Data, mimeType) {
+  try {
+    if (!base64Data || !branchId) return { success: false, message: 'Missing data.' };
+    const sigFolder = _getSignaturesFolder_(branchId);
+    const ext = mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
+    const name = 'template_header_' + branchId + ext;
+    const old = sigFolder.getFilesByName(name);
+    while (old.hasNext()) old.next().setTrashed(true);
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
+    const file = sigFolder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w800';
+    // Save URL into template settings
+    const key = 'lab_template_settings_' + branchId;
+    const ss = getSS_();
+    let sh = ss.getSheetByName('System_Settings');
+    if (!sh) {
+      sh = ss.insertSheet('System_Settings');
+      sh.getRange(1, 1, 1, 2).setValues([['key', 'value']]);
+      sh.getRange(1, 1, 1, 2).setFontWeight('bold').setBackground('#0060b0').setFontColor('#fff');
+      sh.setFrozenRows(1);
+    }
+    const lr = sh.getLastRow();
+    let existing = {};
+    let idx = -1;
+    if (lr >= 2) {
+      const rows = sh.getRange(2, 1, lr - 1, 2).getValues();
+      idx = rows.findIndex(function(r) { return String(r[0]).trim() === key; });
+      if (idx !== -1) {
+        try { existing = JSON.parse(String(rows[idx][1] || '{}')); } catch(e) {}
+      }
+    }
+    existing.header_image_url = url;
+    if (idx !== -1) {
+      sh.getRange(idx + 2, 2).setValue(JSON.stringify(existing));
+    } else {
+      sh.appendRow([key, JSON.stringify(existing)]);
+    }
+    return { success: true, url: url };
+  } catch(e) {
+    Logger.log('uploadTemplateHeaderImage ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── UPDATE MY PASSWORD ───────────────────────────────────────
 function updateMyPassword(payload) {
   try {
