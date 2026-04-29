@@ -571,7 +571,7 @@ function getReceptionistDashboardStats(branchId) {
     const rows = brSh.getRange(2,1,brSh.getLastRow()-1,8).getValues();
     const br   = rows.find(r => String(r[0]).trim() === branchId);
     if (!br || !br[7]) return { success: false, message: 'Branch SS not configured.' };
-    const bss   = SpreadsheetApp.openById(String(br[7]).trim());
+    const bss   = openSS_(String(br[7]).trim());
     const ordSh = bss.getSheetByName('LAB_ORDER');
     const patSh = bss.getSheetByName('Patients');
     const patCount = patSh && patSh.getLastRow() >= 2 ? patSh.getLastRow() - 1 : 0;

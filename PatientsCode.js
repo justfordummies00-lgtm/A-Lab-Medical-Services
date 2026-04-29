@@ -12,10 +12,10 @@
 // ============================================================
 
 // ── SS CACHE (per execution) ─────────────────────────────────
-const _patSSCache_ = {};
-
+// Branch SS opens are memoized through openSS_() in Cache.js so
+// any module that touches the same branch SS in this invocation
+// hits the same cached SpreadsheetApp object.
 function getBranchSS_(branchId) {
-  if (_patSSCache_[branchId]) return _patSSCache_[branchId];
   const brSh = getSS_().getSheetByName('Branches');
   if (!brSh) throw new Error('"Branches" sheet not found.');
   const lr   = brSh.getLastRow();
@@ -25,9 +25,7 @@ function getBranchSS_(branchId) {
   if (!row) throw new Error('Branch "' + branchId + '" not found.');
   const ssId = String(row[7] || '').trim();
   if (!ssId) throw new Error('Branch "' + branchId + '" has no spreadsheet configured.');
-  const ss = SpreadsheetApp.openById(ssId);
-  _patSSCache_[branchId] = ss;
-  return ss;
+  return openSS_(ssId);
 }
 
 // ── GET OR CREATE Patients sheet in branch SS ────────────────
@@ -362,7 +360,7 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
       const ssId       = String(br[7]).trim();
 
       try {
-        const bss  = SpreadsheetApp.openById(ssId);
+        const bss  = openSS_(ssId);
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
 
@@ -547,7 +545,7 @@ function get4psCensus(branchIds) {
     const results = [];
     for (const br of allBranches) {
       try {
-        const bss   = SpreadsheetApp.openById(br.ss_id);
+        const bss   = openSS_(br.ss_id);
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
         const cols = Math.max(patSh.getLastColumn(), 15);

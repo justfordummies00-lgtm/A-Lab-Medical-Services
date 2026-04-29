@@ -43,6 +43,10 @@ function getSuperAdminsSheet_() {
 // Returns unified list: Super Admins + Branch Admins
 // Also returns branches list for the branch picker in the modal
 function getAdmins() {
+  return withCache_('admins', 'all', 60, _getAdmins_);
+}
+
+function _getAdmins_() {
   try {
     const admins = [];
 
@@ -177,6 +181,7 @@ function createAdmin(payload) {
       ]);
 
       const adminId = 'SA-' + payload.username.trim().replace(/\W/g,'').toUpperCase();
+      cacheBust_('admins');
       writeAuditLog_('ADMIN_CREATE', { admin_id: adminId, role: 'Super Admin', name: payload.name });
       return { success: true, admin_id: adminId };
 
@@ -213,6 +218,7 @@ function createAdmin(payload) {
         now, now
       ]);
 
+      cacheBust_('admins');
       writeAuditLog_('ADMIN_CREATE', { admin_id: adminId, role: 'Branch Admin', name: payload.name });
       return { success: true, admin_id: adminId };
     }
@@ -254,6 +260,7 @@ function updateAdmin(payload) {
         payload.status || 'Active'
       ]]);
 
+      cacheBust_('admins');
       writeAuditLog_('ADMIN_UPDATE', { admin_id: payload.admin_id, name: payload.name });
       return { success: true };
 
@@ -302,6 +309,7 @@ function updateAdmin(payload) {
         new Date()
       ]]);
 
+      cacheBust_('admins');
       writeAuditLog_('ADMIN_UPDATE', { admin_id: payload.admin_id, name: payload.name });
       return { success: true };
     }
@@ -341,6 +349,7 @@ function deleteAdmin(adminId) {
       sh.deleteRow(rowIdx + 2);
     }
 
+    cacheBust_('admins');
     writeAuditLog_('ADMIN_DELETE', { admin_id: adminId });
     Logger.log('deleteAdmin: deleted ' + adminId);
     return { success: true };

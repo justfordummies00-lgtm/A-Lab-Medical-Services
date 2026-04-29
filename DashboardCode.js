@@ -60,7 +60,7 @@ function getDashboardStats(branchId) {
 
     branchIds.forEach(br => {
       try {
-        const bss    = SpreadsheetApp.openById(br.ssId);
+        const bss    = openSS_(br.ssId);
         const ordSh  = bss.getSheetByName('LAB_ORDER');
         const paySh  = bss.getSheetByName('PAYMENT');
         const patSh  = bss.getSheetByName('Patients');
@@ -185,7 +185,7 @@ function getTechDashboardStats(branchId, techRole) {
     const br   = rows.find(r => String(r[0]).trim() === branchId);
     if (!br || !br[7]) return { success: false, message: 'Branch SS not configured.' };
 
-    const bss   = SpreadsheetApp.openById(String(br[7]).trim());
+    const bss   = openSS_(String(br[7]).trim());
     const ordSh = bss.getSheetByName('LAB_ORDER');
     const patSh = bss.getSheetByName('Patients');
 

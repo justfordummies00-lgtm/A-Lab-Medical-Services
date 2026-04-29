@@ -16,6 +16,10 @@ function getDiscountSheet_() {
 
 // ── READ ─────────────────────────────────────────────────────
 function getDiscounts() {
+  return withCache_('discounts', 'all', 60, _getDiscounts_);
+}
+
+function _getDiscounts_() {
   try {
     const sh = getDiscountSheet_();
     const lr = sh.getLastRow();
@@ -72,6 +76,7 @@ function createDiscount(payload) {
       now, now
     ]);
 
+    cacheBust_('discounts');
     writeAuditLog_('DISC_CREATE', { discount_id: discId, discount_name: payload.discount_name });
     Logger.log('createDiscount: ' + discId);
     return { success: true, discount_id: discId };
@@ -122,6 +127,7 @@ function updateDiscount(payload) {
       new Date()
     ]]);
 
+    cacheBust_('discounts');
     writeAuditLog_('DISC_UPDATE', { discount_id: payload.discount_id, discount_name: payload.discount_name });
     return { success: true };
   } catch(e) {
@@ -144,6 +150,7 @@ function deleteDiscount(discountId) {
     if (rowIdx === -1) return { success: false, message: 'Discount not found.' };
 
     sh.deleteRow(rowIdx + 2);
+    cacheBust_('discounts');
     writeAuditLog_('DISC_DELETE', { discount_id: discountId });
     Logger.log('deleteDiscount: ' + discountId);
     return { success: true };

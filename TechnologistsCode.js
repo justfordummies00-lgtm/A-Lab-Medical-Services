@@ -47,6 +47,11 @@ function getTechBranchList_() {
 
 // ── READ ─────────────────────────────────────────────────────
 function getTechnologists(branchIds) {
+  const filter = (branchIds || '').toString().trim();
+  return withCache_('technologists', filter || 'all', 60, function() { return _getTechnologists_(filter); });
+}
+
+function _getTechnologists_(branchIds) {
   try {
     const sh = getTechSheet_();
     const lr = sh.getLastRow();
@@ -132,6 +137,7 @@ function createTechnologist(payload) {
         (payload.assigned_deps || '').trim()
     ]);
 
+    cacheBust_('technologists');
     writeAuditLog_('TECH_CREATE', { tech_id: techId, name: payload.last_name + ', ' + payload.first_name });
     Logger.log('createTechnologist: ' + techId);
     return { success: true, tech_id: techId };
@@ -187,6 +193,7 @@ function updateTechnologist(payload) {
       (payload.assigned_deps || '').trim()
     ]]);
 
+    cacheBust_('technologists');
     writeAuditLog_('TECH_UPDATE', { tech_id: payload.tech_id });
     return { success: true };
   } catch(e) {
@@ -223,6 +230,7 @@ function deleteTechnologist(techId) {
     if (rowIdx === -1) return { success: false, message: 'Technologist not found.' };
 
     sh.deleteRow(rowIdx + 2);
+    cacheBust_('technologists');
     writeAuditLog_('TECH_DELETE', { tech_id: techId });
     return { success: true };
   } catch(e) {

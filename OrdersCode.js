@@ -3,19 +3,17 @@
 // ============================================================
 
 // ── SS CACHE (per execution) ─────────────────────────────────
-const _ssCache_ = {};
-
+// Branch ID → SS lookup is memoized via openSS_() in Cache.js,
+// so multiple modules touching the same branch SS within one
+// google.script.run invocation only open it once.
 function getOrderSS_(branchId) {
-  if (_ssCache_[branchId]) return _ssCache_[branchId];
   const sh = getSS_().getSheetByName('Branches');
   if (!sh) throw new Error('Branches sheet not found.');
   const lr = sh.getLastRow();
   const rows = sh.getRange(2, 1, lr - 1, 8).getValues();
   const row = rows.find(r => String(r[0]).trim() === branchId);
   if (!row || !row[7]) throw new Error('Branch spreadsheet not configured for: ' + branchId);
-  const ss = SpreadsheetApp.openById(String(row[7]).trim());
-  _ssCache_[branchId] = ss;
-  return ss;
+  return openSS_(String(row[7]).trim());
 }
 
 function getOrCreateSheet_(ss, name, headers) {

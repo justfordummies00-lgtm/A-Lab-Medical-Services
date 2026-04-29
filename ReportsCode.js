@@ -59,7 +59,7 @@ function getAllBranchesIncomeReport(dateFrom, dateTo) {
 
     for (const br of branches) {
       try {
-        const bss    = SpreadsheetApp.openById(br.ss_id);
+        const bss    = openSS_(br.ss_id);
         const report = _buildReport_(bss, br.branch_id, from, to);
 
         totalRevenue    += report.summary.total_revenue;
@@ -252,5 +252,5 @@ function _getReportSS_(branchId) {
   const rows = brSh.getRange(2, 1, brSh.getLastRow()-1, 8).getValues();
   const br   = rows.find(r => String(r[0]).trim() === branchId);
   if (!br || !br[7]) return null;
-  return SpreadsheetApp.openById(String(br[7]).trim());
+  return openSS_(String(br[7]).trim());
 }
