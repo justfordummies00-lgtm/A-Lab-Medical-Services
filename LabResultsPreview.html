@@ -91,7 +91,7 @@
   .lrp-cat-tab:hover { border-color:var(--teal-500); color:var(--teal-600); }
   .lrp-cat-tab.active { background:var(--teal-600); color:#fff; border-color:var(--teal-600); }
 
-  /* ── Result page card (on screen) ── */
+  /* ── Result page card (on screen) — letter-size proportions ── */
   .lrp-page {
     background:#fff;
     border:1px solid #e5e7eb;
@@ -99,8 +99,10 @@
     padding:40px 48px;
     margin-bottom:16px;
     box-shadow:0 1px 3px rgba(0,0,0,.06);
-    max-width:820px;
+    width:8.5in;
+    min-height:11in;
     position:relative;
+    box-sizing:border-box;
   }
 
   /* ── Header block ── */
@@ -463,33 +465,8 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
   // Title banner
   html += '<div class="lrp-title-banner">' + _e(cat.category_name || '').toUpperCase() + '</div>';
 
-  // Render services
+  // Render services — each service gets its own table with appropriate columns
   var services = cat.services || [];
-
-  // Detect layout: do services have units and reference ranges?
-  var allParams = [];
-  services.forEach(function(svc) { allParams = allParams.concat(svc.params || []); });
-
-  var dataParams = allParams.filter(function(pp) {
-    var ft = (pp.field_type || 'numeric').toLowerCase();
-    return ft !== 'header' && ft !== 'subheader' && ft !== 'note';
-  });
-
-  var hasUnit = dataParams.some(function(pp) { return (pp.unit || '').trim() !== ''; });
-  var hasRef = dataParams.some(function(pp) { return (pp.reference_range || '').trim() !== ''; });
-
-  // Build table
-  var colCount = 2;
-  if (hasRef) colCount++;
-  if (hasUnit) colCount++;
-
-  html += '<table class="lrp-result-table"><thead><tr>';
-  html += '<th style="width:38%;">TEST</th>';
-  html += '<th style="width:' + (hasRef || hasUnit ? '18' : '62') + '%;text-align:center;">RESULT</th>';
-  if (hasRef) html += '<th style="width:22%;text-align:center;">REFERENCE VALUE</th>';
-  if (hasUnit) html += '<th style="width:12%;">UNIT</th>';
-  html += '</tr></thead><tbody>';
-
   var multiService = services.length > 1;
   var hasOthersField = false;
   var othersValue = '';
@@ -499,18 +476,36 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
       return (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0);
     });
 
-    // For multi-service categories, show service name header if first param isn't a header
+    // Detect columns per service
+    var svcDataParams = params.filter(function(pp) {
+      var ft = (pp.field_type || 'numeric').toLowerCase();
+      return ft !== 'header' && ft !== 'subheader' && ft !== 'note';
+    });
+    var svcHasUnit = svcDataParams.some(function(pp) { return (pp.unit || '').trim() !== ''; });
+    var svcHasRef = svcDataParams.some(function(pp) { return (pp.reference_range || '').trim() !== ''; });
+    var colCount = 2;
+    if (svcHasRef) colCount++;
+    if (svcHasUnit) colCount++;
+
+    // Service header for multi-service categories
     var firstIsHeader = params.length > 0 && (params[0].field_type || '').toLowerCase() === 'header';
     if (multiService && !firstIsHeader) {
-      html += '<tr class="lrp-section-header"><td colspan="' + colCount + '">' + _e(svc.serv_name || '').toUpperCase() + '</td></tr>';
+      html += '<div style="font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:#333;margin:16px 0 6px;padding-bottom:4px;border-bottom:1.5px solid #ccc;">' + _e(svc.serv_name || '').toUpperCase() + '</div>';
     }
+
+    // Build per-service table
+    html += '<table class="lrp-result-table"><thead><tr>';
+    html += '<th style="width:' + (svcHasRef || svcHasUnit ? '38' : '50') + '%;">TEST</th>';
+    html += '<th style="width:' + (svcHasRef || svcHasUnit ? '18' : '50') + '%;text-align:center;">RESULT</th>';
+    if (svcHasRef) html += '<th style="width:22%;text-align:center;">REFERENCE VALUE</th>';
+    if (svcHasUnit) html += '<th style="width:12%;">UNIT</th>';
+    html += '</tr></thead><tbody>';
 
     params.forEach(function(pp) {
       var ft = (pp.field_type || 'numeric').toLowerCase();
       var result = pp.result_value || '';
       var paramName = pp.param_name || '';
 
-      // Handle OTHERS field specially
       if (paramName.toUpperCase() === 'OTHERS') {
         hasOthersField = true;
         othersValue = result;
@@ -539,28 +534,26 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
       html += '<tr' + (indent ? ' class="lrp-indent"' : '') + '>';
       html += '<td>' + _e(paramName) + '</td>';
       html += '<td class="lrp-result-val">' + resultDisplay + '</td>';
-      if (hasRef) html += '<td class="lrp-ref-val">' + _e(refLines[0] || '') + '</td>';
-      if (hasUnit) html += '<td class="lrp-unit-val">' + _e(pp.unit || '') + '</td>';
+      if (svcHasRef) html += '<td class="lrp-ref-val">' + _e(refLines[0] || '') + '</td>';
+      if (svcHasUnit) html += '<td class="lrp-unit-val">' + _e(pp.unit || '') + '</td>';
       html += '</tr>';
 
-      // Multi-line reference ranges
-      if (hasRef && refLines.length > 1) {
+      if (svcHasRef && refLines.length > 1) {
         for (var ri = 1; ri < refLines.length; ri++) {
           html += '<tr><td></td><td></td>';
           html += '<td class="lrp-ref-val">' + _e(refLines[ri]) + '</td>';
-          if (hasUnit) html += '<td></td>';
+          if (svcHasUnit) html += '<td></td>';
           html += '</tr>';
         }
       }
 
-      // Sub-label (e.g. "Antigen Screening Test")
       if (pp.sub_label) {
         html += '<tr class="lrp-sublabel"><td colspan="' + colCount + '">&nbsp;&nbsp;&nbsp;&nbsp;<em>' + _e(pp.sub_label) + '</em></td></tr>';
       }
     });
-  });
 
-  html += '</tbody></table>';
+    html += '</tbody></table>';
+  });
 
   // OTHERS section
   if (hasOthersField) {
