@@ -404,14 +404,16 @@ function saveTemplateSettings(branchId, settings) {
 }
 
 function _getTemplatesFolder_() {
-  var rootId = getSettingValue_('alab_root_folder_id', '');
-  if (rootId) {
-    var root = DriveApp.getFolderById(rootId);
-    var tf = root.getFoldersByName('Templates');
-    var templatesFolder = tf.hasNext() ? tf.next() : root.createFolder('Templates');
-    var hf = templatesFolder.getFoldersByName('Headers');
-    return hf.hasNext() ? hf.next() : templatesFolder.createFolder('Headers');
-  }
+  try {
+    var rootId = getSettingValue_('alab_root_folder_id', '');
+    if (rootId) {
+      var root = DriveApp.getFolderById(rootId);
+      var tf = root.getFoldersByName('Templates');
+      var templatesFolder = tf.hasNext() ? tf.next() : root.createFolder('Templates');
+      var hf = templatesFolder.getFoldersByName('Headers');
+      return hf.hasNext() ? hf.next() : templatesFolder.createFolder('Headers');
+    }
+  } catch(e) { Logger.log('_getTemplatesFolder_ fallback: ' + e.message); }
   var fb = DriveApp.getRootFolder().getFoldersByName('A-Lab Templates');
   return fb.hasNext() ? fb.next() : DriveApp.getRootFolder().createFolder('A-Lab Templates');
 }
