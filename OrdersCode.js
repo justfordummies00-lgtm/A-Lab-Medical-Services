@@ -467,32 +467,40 @@ function createFullOrder(branchId, payload) {
 
 // ── CREATE ORDER ─────────────────────────────────────────────
 function createOrder(branchId, payload) {
-  try {
-    if (!branchId) return { success: false, message: 'Branch ID required.' };
-    if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
-    const ss = getOrderSS_(branchId);
-    const sh = getOrCreateSheet_(ss, 'LAB_ORDER',
-      ['order_id', 'order_no', 'branch_id', 'patient_id', 'doctor_id',
-        'order_date', 'status', 'created_by', 'created_at', 'updated_at', 'notes']);
-    const now = new Date();
-    const branchCode = getBranchCode_(branchId);
-    const orderId = 'ORD-' + Math.random().toString(16).substr(2, 8).toUpperCase();
-    const orderNo = nextOrderNo_(ss, branchCode, now.getFullYear());
-    sh.appendRow([orderId, orderNo, branchId, payload.patient_id.trim(),
-      (payload.doctor_id || '').trim(), now, 'DRAFT',
-      payload.created_by || '', now, now, (payload.notes || '').trim()]);
-    writeBranchAudit_(ss, payload.created_by || '', 'CREATE_ORDER', 'ORDER', orderId, null, { order_no: orderNo });
-    writeAuditLog_('ORDER_CREATE', { branch_id: branchId, order_id: orderId, order_no: orderNo });
-    Logger.log('createOrder: ' + orderId + ' / ' + orderNo);
-    return { success: true, order_id: orderId, order_no: orderNo };
-  } catch (e) {
-    Logger.log('createOrder ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+  // withLock_ — allocating order_no via nextOrderNo_ is read-modify-write
+  // on Settings.order_seq_<year>.  Without this two concurrent receptionists
+  // could allocate the same order number.
+  return withLock_(function() {
+    try {
+      if (!branchId) return { success: false, message: 'Branch ID required.' };
+      if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
+      const ss = getOrderSS_(branchId);
+      const sh = getOrCreateSheet_(ss, 'LAB_ORDER',
+        ['order_id', 'order_no', 'branch_id', 'patient_id', 'doctor_id',
+          'order_date', 'status', 'created_by', 'created_at', 'updated_at', 'notes']);
+      const now = new Date();
+      const branchCode = getBranchCode_(branchId);
+      const orderId = 'ORD-' + Math.random().toString(16).substr(2, 8).toUpperCase();
+      const orderNo = nextOrderNo_(ss, branchCode, now.getFullYear());
+      sh.appendRow([orderId, orderNo, branchId, payload.patient_id.trim(),
+        (payload.doctor_id || '').trim(), now, 'DRAFT',
+        payload.created_by || '', now, now, (payload.notes || '').trim()]);
+      writeBranchAudit_(ss, payload.created_by || '', 'CREATE_ORDER', 'ORDER', orderId, null, { order_no: orderNo });
+      writeAuditLog_('ORDER_CREATE', { branch_id: branchId, order_id: orderId, order_no: orderNo });
+      Logger.log('createOrder: ' + orderId + ' / ' + orderNo);
+      return { success: true, order_id: orderId, order_no: orderNo };
+    } catch (e) {
+      Logger.log('createOrder ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
 
 // ── SAVE ORDER ITEMS ─────────────────────────────────────────
+// withLock_ — deletes-then-appends rows; without lock a concurrent
+// reader/writer can see partial state or skip rows.
 function saveOrderItems(branchId, orderId, items) {
+  return withLock_(function() {
   try {
     if (!branchId || !orderId) return { success: false, message: 'Branch and Order ID required.' };
     const ss = getOrderSS_(branchId);
@@ -523,6 +531,7 @@ function saveOrderItems(branchId, orderId, items) {
     Logger.log('saveOrderItems ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── CONFIRM ORDER ────────────────────────────────────────────
@@ -531,7 +540,10 @@ function confirmOrder(branchId, orderId, techId) {
 }
 
 // ── POST PAYMENT ─────────────────────────────────────────────
+// withLock_ — reads order balance then writes payment_status; without
+// the lock a partial / overpayment race could mark an order PAID twice.
 function postPayment(branchId, orderId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId || !orderId) return { success: false, message: 'Branch and Order ID required.' };
     if (!payload.amount || Number(payload.amount) <= 0) return { success: false, message: 'Valid amount required.' };
@@ -559,6 +571,7 @@ function postPayment(branchId, orderId, payload) {
     Logger.log('postPayment ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ORDER STATUS ───────────────────────────────────────
@@ -567,6 +580,7 @@ function updateOrderStatus(branchId, orderId, newStatus, techId) {
 }
 
 function updateOrderStatus_(branchId, orderId, newStatus, actorId, action) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const sh = ss.getSheetByName('LAB_ORDER');
@@ -588,12 +602,14 @@ function updateOrderStatus_(branchId, orderId, newStatus, actorId, action) {
     Logger.log('updateOrderStatus_ ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── ARCHIVE ORDER ─────────────────────────────────────────────
 // Sets status to ARCHIVED. Archived orders are hidden from tech dashboards.
 // Only allowed on DRAFT or OPEN orders (not yet in progress).
 function archiveOrder(branchId, orderId, actorId) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const sh = ss.getSheetByName('LAB_ORDER');
@@ -618,10 +634,12 @@ function archiveOrder(branchId, orderId, actorId) {
     Logger.log('archiveOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ORDER (edit patient, doctor, notes, date) ──────────
 function updateOrder(branchId, orderId, payload, actorId) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const mainSS = getSS_();
@@ -679,6 +697,7 @@ function updateOrder(branchId, orderId, payload, actorId) {
     Logger.log('updateOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 function updateOrderTimestamp_(ss, orderId) {

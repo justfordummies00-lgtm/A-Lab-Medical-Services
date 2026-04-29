@@ -87,7 +87,7 @@ function buildDiscountMap_() {
 }
 
 // ── READ ─────────────────────────────────────────────────────
-function getPatients(branchId) {
+function getPatients(branchId, includeArchived) {
   try {
     if (!branchId) return { success: false, message: 'Branch ID is required.' };
 
@@ -97,10 +97,12 @@ function getPatients(branchId) {
     // Batch read patients + discounts from main SS simultaneously
     // discMap built from main SS (not branch SS — already in memory)
     const discMap = buildDiscountMap_();
+    const archCol = findArchiveCol_(sh);
 
     const data = lr < 2 ? [] :
       sh.getRange(2, 1, lr-1, Math.max(sh.getLastColumn(), 18)).getValues()
         .filter(r => r[0] && String(r[0]).trim())
+        .filter(r => includeArchived || !isArchivedRow_(r, archCol))
         .map(r => {
           const discIds  = String(r[10]||'').trim();
           const discDisp = discIds
@@ -145,6 +147,7 @@ function getPatients(branchId) {
 
 // ── CREATE ────────────────────────────────────────────────────
 function createPatient(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId)           return { success: false, message: 'Branch ID is required.' };
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
@@ -200,10 +203,12 @@ function createPatient(branchId, payload) {
     Logger.log('createPatient ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ────────────────────────────────────────────────────
 function updatePatient(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId)            return { success: false, message: 'Branch ID is required.' };
     if (!payload.patient_id)  return { success: false, message: 'Patient ID is required.' };
@@ -254,30 +259,49 @@ function updatePatient(branchId, payload) {
     Logger.log('updatePatient ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── DELETE ────────────────────────────────────────────────────
-function deletePatient(branchId, patientId) {
-  try {
-    if (!branchId)  return { success: false, message: 'Branch ID is required.' };
-    if (!patientId) return { success: false, message: 'Patient ID is required.' };
-
-    const sh  = getPatientSheet_(branchId);
-    const lr  = sh.getLastRow();
-    if (lr < 2) return { success: false, message: 'Patient not found.' };
-
-    const ids    = sh.getRange(2, 1, lr-1, 1).getValues().flat().map(String);
-    const rowIdx = ids.findIndex(id => id.trim() === patientId.trim());
-    if (rowIdx === -1) return { success: false, message: 'Patient not found.' };
-
-    sh.deleteRow(rowIdx + 2);
-    writeAuditLog_('PATIENT_DELETE', { branch_id: branchId, patient_id: patientId });
-    return { success: true };
-  } catch(e) {
-    Logger.log('deletePatient ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+// Soft-delete: archives the patient instead of removing the row.
+// All historical orders / payments / results stay intact and remain
+// queryable from the home branch's records.  See Archive.gs.
+function archivePatient(branchId, patientId) {
+  return withLock_(function() {
+    try {
+      if (!branchId)  return { success: false, message: 'Branch ID is required.' };
+      if (!patientId) return { success: false, message: 'Patient ID is required.' };
+      const sh = getPatientSheet_(branchId);
+      const r  = setArchiveFlag_(sh, patientId, true);
+      if (!r.ok) return { success: false, message: 'Patient not found.' };
+      writeAuditLog_('PATIENT_ARCHIVE', { branch_id: branchId, patient_id: patientId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('archivePatient ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
+
+function unarchivePatient(branchId, patientId) {
+  return withLock_(function() {
+    try {
+      if (!branchId)  return { success: false, message: 'Branch ID is required.' };
+      if (!patientId) return { success: false, message: 'Patient ID is required.' };
+      const sh = getPatientSheet_(branchId);
+      const r  = setArchiveFlag_(sh, patientId, false);
+      if (!r.ok) return { success: false, message: 'Patient not found.' };
+      writeAuditLog_('PATIENT_UNARCHIVE', { branch_id: branchId, patient_id: patientId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('unarchivePatient ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
+}
+
+// Backward-compat — old UIs still call deletePatient; route to archive.
+function deletePatient(branchId, patientId) { return archivePatient(branchId, patientId); }
 
 // ── GET BRANCHES FOR PATIENT VIEW (SA/BA selector) ───────────
 function getBranchesForPatientView(branchIds) {
@@ -364,9 +388,11 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
 
-        const cols = Math.max(patSh.getLastColumn(), 13);
+        const cols    = Math.max(patSh.getLastColumn(), 13);
+        const archCol = findArchiveCol_(patSh);
         patSh.getRange(2,1,patSh.getLastRow()-1,cols).getValues()
           .filter(r => r[0])
+          .filter(r => !isArchivedRow_(r, archCol))
           .forEach(r => {
             const patId    = String(r[0]).trim();
             const lastName = String(r[1]||'').trim();
