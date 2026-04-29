@@ -29,6 +29,10 @@ function getQueueRoutingSheet_() {
 }
 
 function getQueueRoutingConfig() {
+  return withCache_('queue_routing', 'all', 120, _getQueueRoutingConfig_);
+}
+
+function _getQueueRoutingConfig_() {
   try {
     const sh = getQueueRoutingSheet_();
     const lr = sh.getLastRow();
@@ -61,6 +65,7 @@ function saveQueueRoutingConfig(rows) {
       now
     ]);
     sh.getRange(2, 1, values.length, 4).setValues(values);
+    cacheBust_('queue_routing');
     writeAuditLog_('QUEUE_ROUTING_SAVE', { rows: rows.length });
     return { success: true };
   } catch (e) {

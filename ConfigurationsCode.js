@@ -37,6 +37,10 @@ function getSystemSettingsSheet_() {
 
 // ── READ ALL SETTINGS ────────────────────────────────────────
 function getSystemSettings() {
+  return withCache_('system_settings', 'all', 120, _getSystemSettings_);
+}
+
+function _getSystemSettings_() {
   try {
     const sh = getSystemSettingsSheet_();
     const lr = sh.getLastRow();
@@ -72,12 +76,14 @@ function saveSystemSetting(key, value, updatedBy) {
       if (idx !== -1) {
         sh.getRange(idx+2, 2).setValue(value);
         sh.getRange(idx+2, 6, 1, 2).setValues([[now, updatedBy||'']]);
+        cacheBust_('system_settings');
         writeAuditLog_('SETTING_UPDATE', { key, value, updated_by: updatedBy });
         return { success: true };
       }
     }
     // Not found — shouldn't happen but handle gracefully
     sh.appendRow([key, value, key, '', 'text', now, updatedBy||'']);
+    cacheBust_('system_settings');
     return { success: true };
   } catch(e) {
     Logger.log('saveSystemSetting ERROR: ' + e.message);
@@ -100,6 +106,7 @@ function saveSystemSettings(settings, updatedBy) {
         sh.getRange(idx+2, 6, 1, 2).setValues([[now, updatedBy||'']]);
       }
     });
+    cacheBust_('system_settings');
     writeAuditLog_('SETTINGS_BATCH_UPDATE', { count: settings.length, updated_by: updatedBy });
     Logger.log('saveSystemSettings: saved ' + settings.length + ' settings');
     return { success: true };

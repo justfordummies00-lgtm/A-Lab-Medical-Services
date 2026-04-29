@@ -202,7 +202,7 @@ function getBranchPhilhealthClaims(branchId) {
 
     branchesToQuery.forEach(br => {
       try {
-        const ss    = SpreadsheetApp.openById(br.ssId);
+        const ss    = openSS_(br.ssId);
         const sh    = getPhilhealthClaimsSheet_(ss);
         const lr    = sh.getLastRow();
 

@@ -45,8 +45,13 @@ function buildDoctorBranchMap_() {
   return map;
 }
 
-// ── READ ─────────────────────────────────────────────────────
+// ── READ ────────────────────────────────────────────────────
 function getDoctors(branchIds) {
+  const filter = (branchIds || '').toString().trim();
+  return withCache_('doctors', filter || 'all', 60, function() { return _getDoctors_(filter); });
+}
+
+function _getDoctors_(branchIds) {
   try {
     const sh = getDoctorsSheet_();
     const lr = sh.getLastRow();
@@ -133,6 +138,7 @@ function createDoctor(payload) {
       now   // updated_at
     ]);
 
+    cacheBust_('doctors');
     writeAuditLog_('DOCTOR_CREATE', { doctor_id: doctorId, name: payload.last_name + ', ' + payload.first_name });
     Logger.log('createDoctor: ' + doctorId);
     return { success: true, doctor_id: doctorId };
@@ -188,6 +194,7 @@ function updateDoctor(payload) {
       new Date()
     ]]);
 
+    cacheBust_('doctors');
     writeAuditLog_('DOCTOR_UPDATE', { doctor_id: payload.doctor_id });
     return { success: true };
   } catch(e) {
@@ -209,6 +216,7 @@ function deleteDoctor(doctorId) {
     if (rowIdx === -1) return { success: false, message: 'Doctor not found.' };
 
     sh.deleteRow(rowIdx + 2);
+    cacheBust_('doctors');
     writeAuditLog_('DOCTOR_DELETE', { doctor_id: doctorId });
     return { success: true };
   } catch(e) {
@@ -234,7 +242,7 @@ function getDoctorReferrals(doctorId) {
 
     brRows.forEach(br => {
       try {
-        const bss   = SpreadsheetApp.openById(String(br[7]).trim());
+        const bss   = openSS_(String(br[7]).trim());
         const ordSh = bss.getSheetByName('LAB_ORDER');
         if (!ordSh || ordSh.getLastRow() < 2) return;
 

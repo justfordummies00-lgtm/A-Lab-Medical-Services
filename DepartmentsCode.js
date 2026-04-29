@@ -24,6 +24,10 @@ function getCatSheet_() {
 // ── READ ─────────────────────────────────────────────────────
 // Returns departments with their categories nested
 function getDepartments() {
+  return withCache_('departments', 'all', 60, _getDepartments_);
+}
+
+function _getDepartments_() {
   try {
     const deptSh = getDeptSheet_();
     const catSh  = getCatSheet_();
@@ -109,6 +113,7 @@ function createDepartment(payload) {
       savedCats.push({ cat_id: catId, dept_id: deptId, category_name: cat.category_name.trim(), is_active: catActive, created_at: now.toISOString(), updated_at: now.toISOString() });
     });
 
+    cacheBust_('departments');
     writeAuditLog_('DEPT_CREATE', { dept_id: deptId, department_name: payload.department_name, categories: savedCats.length });
     Logger.log('createDepartment: ' + deptId + ' with ' + savedCats.length + ' categories');
 
@@ -214,6 +219,7 @@ function updateDepartment(payload) {
       cascadeGlobalDeptInactive_(payload.dept_id);
     }
 
+    cacheBust_('departments');
     writeAuditLog_('DEPT_UPDATE', { dept_id: payload.dept_id, department_name: payload.department_name, is_active: isActive });
     Logger.log('updateDepartment: updated ' + payload.dept_id);
     return { success: true };
@@ -250,6 +256,7 @@ function deleteDepartment(deptId) {
       toDelete.sort((a,b) => b - a).forEach(row => catSh.deleteRow(row));
     }
 
+    cacheBust_('departments');
     writeAuditLog_('DEPT_DELETE', { dept_id: deptId });
     Logger.log('deleteDepartment: deleted ' + deptId + ' + its categories');
     return { success: true };
