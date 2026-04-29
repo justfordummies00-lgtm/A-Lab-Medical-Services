@@ -796,13 +796,6 @@ function getLabPreviewData(branchId, orderId) {
     }
 
     items.forEach(function (it) {
-      var catInfo = _getCategoryForService_(it.serv_id, catCache);
-
-      if (!groups[catInfo.cat_id]) {
-        groups[catInfo.cat_id] = { cat_id: catInfo.cat_id, category_name: catInfo.category_name, services: [] };
-        catOrder.push(catInfo.cat_id);
-      }
-
       var params;
       if (it.raw_values) {
         params = it.raw_values.map(function (p) {
@@ -835,7 +828,13 @@ function getLabPreviewData(branchId, orderId) {
               result_value: ''
             };
           });
-        if (!params.length) return;
+      }
+      if (!params.length) return;
+
+      var catInfo = _getCategoryForService_(it.serv_id, catCache);
+      if (!groups[catInfo.cat_id]) {
+        groups[catInfo.cat_id] = { cat_id: catInfo.cat_id, category_name: catInfo.category_name, services: [] };
+        catOrder.push(catInfo.cat_id);
       }
 
       groups[catInfo.cat_id].services.push({
