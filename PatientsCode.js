@@ -388,7 +388,13 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
 
-        const cols    = Math.max(patSh.getLastColumn(), 13);
+        // Read at least 18 cols — the unlocked-row mapping below reads
+        // r[13] (home_branch_id), r[14] (is_4ps), r[16] (senior_citizen_id)
+        // and r[17] (pwd_id).  A branch whose Patients sheet hasn't been
+        // migrated yet may report getLastColumn() == 13, which would
+        // silently produce undefined for all four of those fields.  Match
+        // the pattern in getPatients() which uses 18.
+        const cols    = Math.max(patSh.getLastColumn(), 18);
         const archCol = findArchiveCol_(patSh);
         patSh.getRange(2,1,patSh.getLastRow()-1,cols).getValues()
           .filter(r => r[0])
