@@ -665,14 +665,16 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
   html += '</div>';
 
   // Clinical note (from template settings or default)
-  var noteText = ts.clinical_note || 'NOTE: CORRELATE CLINICALLY.\nClinical Diagnosis should not be established based on this single test result.\nAll individuals are strongly encouraged to consult their own health care provider to evaluate test result.';
-  var noteLines = noteText.split('\n');
-  html += '<div class="lrp-footer">';
-  noteLines.forEach(function(line, i) {
-    if (i === 0) html += '<strong>' + _e(line) + '</strong><br>';
-    else html += '<em>' + _e(line) + '</em><br>';
-  });
-  html += '</div>';
+  var noteText = ('clinical_note' in ts) ? ts.clinical_note : 'NOTE: CORRELATE CLINICALLY.\nClinical Diagnosis should not be established based on this single test result.\nAll individuals are strongly encouraged to consult their own health care provider to evaluate test result.';
+  if (noteText && noteText.trim()) {
+    var noteLines = noteText.split('\n');
+    html += '<div class="lrp-footer">';
+    noteLines.forEach(function(line, i) {
+      if (i === 0) html += '<strong>' + _e(line) + '</strong><br>';
+      else html += '<em>' + _e(line) + '</em><br>';
+    });
+    html += '</div>';
+  }
 
   // Page footer (from template settings — social media, contact info)
   if (ts.footer_text && ts.footer_text.trim()) {
