@@ -99,11 +99,13 @@
     </select>
   </div>
 
-  <!-- Tech tabs (In Queue / In Progress / Completed) — shown only for Technologist role -->
-  <div id="ordTechTabs" style="display:none;margin-bottom:16px;border-bottom:1.5px solid var(--border);display:flex;gap:2px;">
-    <button class="ord-tab active" id="techTabInQueue" onclick="ord_techTab('IN_QUEUE')">In Queue</button>
-    <button class="ord-tab" id="techTabInProgress" onclick="ord_techTab('IN_PROGRESS')">In Progress</button>
-    <button class="ord-tab" id="techTabCompleted" onclick="ord_techTab('COMPLETED')">Completed</button>
+  <!-- Tech tabs (In Queue / In Progress / For Release / Released) — shown only for Technologist role.
+       Counts in the badges reflect ORD.all (all orders that came into the system, no dept routing). -->
+  <div id="ordTechTabs" style="display:none;margin-bottom:16px;border-bottom:1.5px solid var(--border);display:flex;gap:2px;flex-wrap:wrap;">
+    <button class="ord-tab active" id="techTabInQueue" onclick="ord_techTab('IN_QUEUE')">In Queue<span class="ord-tab-count" id="techTabCountInQueue">0</span></button>
+    <button class="ord-tab" id="techTabInProgress" onclick="ord_techTab('IN_PROGRESS')">In Progress<span class="ord-tab-count" id="techTabCountInProgress">0</span></button>
+    <button class="ord-tab" id="techTabForRelease" onclick="ord_techTab('FOR_RELEASE')">For Release<span class="ord-tab-count" id="techTabCountForRelease">0</span></button>
+    <button class="ord-tab" id="techTabReleased" onclick="ord_techTab('RELEASED')">Released<span class="ord-tab-count" id="techTabCountReleased">0</span></button>
   </div>
 
   <!-- Empty state -->
@@ -140,6 +142,25 @@
         </thead>
         <tbody id="ordTableBody"></tbody>
       </table>
+    </div>
+
+    <!-- Pagination footer — used by every role on the Orders page. -->
+    <div id="ordPager" class="ord-pager" style="display:none;">
+      <div class="ord-pager-info" id="ordPagerInfo">—</div>
+      <div class="ord-pager-controls">
+        <label class="ord-pager-size">
+          Per page
+          <select id="ordPageSize" class="f-inp" onchange="ord_setPageSize(this.value)">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
+        <button class="btn btn-sm btn-secondary" id="ordPagerPrev" onclick="ord_pageGo(ORD._page - 1)">‹ Prev</button>
+        <span class="ord-pager-page" id="ordPagerPage">1 / 1</span>
+        <button class="btn btn-sm btn-secondary" id="ordPagerNext" onclick="ord_pageGo(ORD._page + 1)">Next ›</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1068,6 +1089,72 @@
     border-bottom-color: var(--teal-600);
   }
 
+  .ord-tab-count {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    background: var(--gray-100);
+    color: var(--text-3);
+    min-width: 18px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .ord-tab.active .ord-tab-count {
+    background: rgba(16,168,168,.12);
+    color: var(--teal-600);
+  }
+
+  .ord-pager {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--gray-50);
+    flex-wrap: wrap;
+  }
+  .ord-pager-info {
+    font-size: 12px;
+    color: var(--text-3);
+    font-family: var(--mono);
+  }
+  .ord-pager-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ord-pager-size {
+    font-size: 11px;
+    color: var(--text-3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .ord-pager-size .f-inp {
+    width: auto;
+    min-width: 64px;
+    padding: 4px 8px;
+    height: auto;
+    font-size: 12px;
+  }
+  .ord-pager-page {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-2);
+    font-family: var(--mono);
+    min-width: 70px;
+    text-align: center;
+  }
+  .btn[disabled], .btn:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+
   .wiz-tab {
     padding: 8px 16px;
     font-size: 12px;
@@ -1122,6 +1209,9 @@
     branches: [],
     tab: '',
     _lastDetail: null,
+    _page: 1,
+    _pageSize: 25,
+    _techTab: 'IN_QUEUE',
     xrayTemplate: null,  // loaded from getXrayTemplateConfig
     wiz: {
       step: 1,
@@ -1207,6 +1297,7 @@
       document.getElementById('ordFilterBar').style.display = 'none';
       document.getElementById('ordTechTabs').style.display = 'flex';
       ORD._techTab = 'IN_QUEUE';
+      ORD._page = 1;
     }
 
     // Transfer button — SA and BA only
@@ -1332,17 +1423,46 @@
     return (svc.service_type || 'lab').split(',').map(function (s) { return s.trim().toLowerCase(); });
   }
 
-  /* ── Tech tab switcher ── */
+  /* ── Tech tab switcher ──
+     Tabs map directly to order statuses (no aggregation).  Switching tabs
+     resets to page 1 so the user always lands on the first page. */
   function ord_techTab(tab) {
     ORD._techTab = tab;
-    ['InQueue', 'InProgress', 'Completed'].forEach(function (t) {
+    ORD._page = 1;
+    ['InQueue', 'InProgress', 'ForRelease', 'Released'].forEach(function (t) {
       var el = document.getElementById('techTab' + t);
       if (el) el.classList.remove('active');
     });
-    var idMap = { IN_QUEUE: 'InQueue', IN_PROGRESS: 'InProgress', COMPLETED: 'Completed' };
+    var idMap = {
+      IN_QUEUE:    'InQueue',
+      IN_PROGRESS: 'InProgress',
+      FOR_RELEASE: 'ForRelease',
+      RELEASED:    'Released'
+    };
     var el = document.getElementById('techTab' + idMap[tab]);
     if (el) el.classList.add('active');
     ord_applyFilter();
+  }
+
+  /* ── Pagination helpers ─────────────────────────────────────
+     Pagination is client-side: ORD.filtered already holds the
+     post-filter result, we slice it for display.  Switching tabs,
+     status filters, or search resets _page back to 1 so the user
+     never lands on an empty page. */
+  function ord_pageGo(p) {
+    var total = ORD.filtered.length;
+    var pages = Math.max(1, Math.ceil(total / ORD._pageSize));
+    if (p < 1) p = 1;
+    if (p > pages) p = pages;
+    ORD._page = p;
+    ord_render();
+  }
+  function ord_setPageSize(n) {
+    var v = parseInt(n, 10);
+    if (!v || v < 1) v = 25;
+    ORD._pageSize = v;
+    ORD._page = 1;
+    ord_render();
   }
 
   /* ── Filter + Render ── */
@@ -1373,34 +1493,34 @@
     }
     var role = APP.user ? APP.user.role : '';
     var techRole = APP.user ? (APP.user.tech_role || '') : '';
+    var isTech = role === 'Technologist';
 
-    // Routing-config-driven queue filter
+    // Routing-config-driven queue filter.
+    // Technologists now see *every* order that came into the system (no
+    // department routing), so the typeFilter/catFilter is intentionally
+    // skipped for them.  Liaison still gets its lab-type filter.
     var typeFilter = null;
     var catFilter = null; // category IDs for liaison-style filtering
-    var routingKey = techRole || role;
-    var routing = (APP.queueRouting && APP.queueRouting[routingKey]) ? APP.queueRouting[routingKey] : null;
-    if (routing) {
-      if (routing.filter_type === 'dept_type') {
-        typeFilter = routing.filter_values || null;
-      } else if (routing.filter_type === 'category') {
-        typeFilter = 'lab'; // category-filtered roles are always lab-type
-        catFilter = routing.filter_values
-          ? routing.filter_values.split(',').map(function (c) { return c.trim(); }).filter(Boolean)
-          : [];
+    if (!isTech) {
+      var routingKey = techRole || role;
+      var routing = (APP.queueRouting && APP.queueRouting[routingKey]) ? APP.queueRouting[routingKey] : null;
+      if (routing) {
+        if (routing.filter_type === 'dept_type') {
+          typeFilter = routing.filter_values || null;
+        } else if (routing.filter_type === 'category') {
+          typeFilter = 'lab'; // category-filtered roles are always lab-type
+          catFilter = routing.filter_values
+            ? routing.filter_values.split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+            : [];
+        }
+      } else if (role === 'Liaison Officer') {
+        typeFilter = 'lab';
       }
-    } else if (role === 'Technologist') {
-      typeFilter = techRole.toLowerCase().indexOf('radiolog') !== -1 ? 'xray' : 'lab';
-    } else if (role === 'Liaison Officer') {
-      typeFilter = 'lab';
     }
 
     ORD.filtered = ORD.all.filter(function (o) {
       if (tab) {
-        if (tab === 'COMPLETED') {
-          if (o.status !== 'FOR_RELEASE' && o.status !== 'RELEASED') return false;
-        } else {
-          if (o.status !== tab) return false;
-        }
+        if (o.status !== tab) return false;
       }
       if (typeFilter) {
         var types = (o.order_types || 'lab').split(',').map(function (t) { return t.trim(); });
@@ -1416,30 +1536,36 @@
       }
       return true;
     });
+    // Filter changed → reset to page 1 to avoid empty-page state.
+    ORD._page = 1;
     ord_render();
   }
 
   function ord_render() {
-    // Update stat cards — count only orders visible to this role
+    // Update stat cards — count only orders visible to this role.
+    // Technologists see *all* orders (no dept routing), so for them
+    // roleAll === ORD.all and the dashboard tab counts also come straight
+    // from ORD.all.  Other roles still get the routing-driven typeFilter.
     var _role = APP.user ? APP.user.role : '';
     var _techRole = APP.user ? (APP.user.tech_role || '') : '';
-    var _routingKey = _techRole || _role;
-    var _routing = (APP.queueRouting && APP.queueRouting[_routingKey]) ? APP.queueRouting[_routingKey] : null;
+    var _isTech = _role === 'Technologist';
     var _typeFilter = null;
     var _catFilter = null;
-    if (_routing) {
-      if (_routing.filter_type === 'dept_type') {
-        _typeFilter = _routing.filter_values || null;
-      } else if (_routing.filter_type === 'category') {
+    if (!_isTech) {
+      var _routingKey = _techRole || _role;
+      var _routing = (APP.queueRouting && APP.queueRouting[_routingKey]) ? APP.queueRouting[_routingKey] : null;
+      if (_routing) {
+        if (_routing.filter_type === 'dept_type') {
+          _typeFilter = _routing.filter_values || null;
+        } else if (_routing.filter_type === 'category') {
+          _typeFilter = 'lab';
+          _catFilter = _routing.filter_values
+            ? _routing.filter_values.split(',').map(function (c) { return c.trim(); }).filter(Boolean)
+            : [];
+        }
+      } else if (_role === 'Liaison Officer') {
         _typeFilter = 'lab';
-        _catFilter = _routing.filter_values
-          ? _routing.filter_values.split(',').map(function (c) { return c.trim(); }).filter(Boolean)
-          : [];
       }
-    } else if (_role === 'Technologist') {
-      _typeFilter = _techRole.toLowerCase().indexOf('radiolog') !== -1 ? 'xray' : 'lab';
-    } else if (_role === 'Liaison Officer') {
-      _typeFilter = 'lab';
     }
     var roleAll = (_typeFilter || _catFilter)
       ? ORD.all.filter(function (o) {
@@ -1457,17 +1583,28 @@
 
     var counts = { DRAFT: 0, OPEN: 0, PAID: 0, IN_QUEUE: 0, IN_PROGRESS: 0, FOR_RELEASE: 0, RELEASED: 0, CANCELLED: 0, VOID: 0 };
     roleAll.forEach(function (o) { if (counts[o.status] !== undefined) counts[o.status]++; });
-    document.getElementById('ordStatTotal').textContent = roleAll.length;
-    document.getElementById('ordStatDraft').textContent = counts.DRAFT;
-    document.getElementById('ordStatOpen').textContent = counts.OPEN;
-    document.getElementById('ordStatPaid').textContent = counts.IN_QUEUE;
-    document.getElementById('ordStatInProg').textContent = counts.IN_PROGRESS;
-    document.getElementById('ordStatForRelease').textContent = counts.FOR_RELEASE;
-    document.getElementById('ordStatReleased').textContent = counts.RELEASED;
+    var _set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    _set('ordStatTotal',      roleAll.length);
+    _set('ordStatDraft',      counts.DRAFT);
+    _set('ordStatOpen',       counts.OPEN);
+    _set('ordStatPaid',       counts.IN_QUEUE);
+    _set('ordStatInProg',     counts.IN_PROGRESS);
+    _set('ordStatForRelease', counts.FOR_RELEASE);
+    _set('ordStatReleased',   counts.RELEASED);
+
+    // Tech tab badges — exact status counts on the in-scope set.
+    if (_isTech) {
+      _set('techTabCountInQueue',    counts.IN_QUEUE);
+      _set('techTabCountInProgress', counts.IN_PROGRESS);
+      _set('techTabCountForRelease', counts.FOR_RELEASE);
+      _set('techTabCountReleased',   counts.RELEASED);
+    }
 
     var count = ORD.filtered.length;
     if (!count) {
       document.getElementById('ordTableCard').style.display = 'none';
+      var _pager = document.getElementById('ordPager');
+      if (_pager) _pager.style.display = 'none';
       document.getElementById('ordEmptyState').style.display = '';
       document.getElementById('ordEmptyIcon').innerHTML = '<svg width="24" height="24" fill="none" stroke="var(--teal-500)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>';
       document.getElementById('ordEmptyTitle').textContent = 'No orders found.';
@@ -1477,8 +1614,27 @@
     document.getElementById('ordEmptyState').style.display = 'none';
     document.getElementById('ordTableCard').style.display = '';
 
+    // ── Pagination slice ─────────────────────────────────────
+    // Sort newest-first (most recent order_date first) so techs see
+    // freshly-arrived work at the top of the queue without scrolling.
+    ORD.filtered.sort(function(a, b) {
+      var da = a.order_date || '';
+      var db = b.order_date || '';
+      if (da < db) return 1;
+      if (da > db) return -1;
+      // Tie-breaker: order_no descending
+      return (a.order_no < b.order_no) ? 1 : (a.order_no > b.order_no ? -1 : 0);
+    });
+    var pageSize = ORD._pageSize || 25;
+    var pages    = Math.max(1, Math.ceil(count / pageSize));
+    if (ORD._page > pages) ORD._page = pages;
+    if (ORD._page < 1)     ORD._page = 1;
+    var startIdx = (ORD._page - 1) * pageSize;
+    var endIdx   = Math.min(startIdx + pageSize, count);
+    var pageRows = ORD.filtered.slice(startIdx, endIdx);
+
     var h = '';
-    ORD.filtered.forEach(function (o) {
+    pageRows.forEach(function (o) {
       var dateDisp = o.order_date
         ? new Date(o.order_date + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
         : '—';
@@ -1508,6 +1664,24 @@
         + '</tr>';
     });
     document.getElementById('ordTableBody').innerHTML = h;
+
+    // ── Pager footer ─────────────────────────────────────────
+    var pager = document.getElementById('ordPager');
+    if (pager) {
+      pager.style.display = '';
+      var info = document.getElementById('ordPagerInfo');
+      if (info) {
+        info.textContent = 'Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + count;
+      }
+      var pageDisp = document.getElementById('ordPagerPage');
+      if (pageDisp) pageDisp.textContent = ORD._page + ' / ' + pages;
+      var prev = document.getElementById('ordPagerPrev');
+      var next = document.getElementById('ordPagerNext');
+      if (prev) prev.disabled = (ORD._page <= 1);
+      if (next) next.disabled = (ORD._page >= pages);
+      var sel = document.getElementById('ordPageSize');
+      if (sel && String(sel.value) !== String(pageSize)) sel.value = String(pageSize);
+    }
   }
 
   /* ════════════════════════════════════

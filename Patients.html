@@ -77,6 +77,25 @@
               <tbody id="patTableBody"></tbody>
             </table>
           </div>
+
+          <!-- Pagination footer (shared style with Orders.html via .ord-pager). -->
+          <div id="patPager" class="ord-pager" style="display:none;">
+            <div class="ord-pager-info" id="patPagerInfo">—</div>
+            <div class="ord-pager-controls">
+              <label class="ord-pager-size">
+                Per page
+                <select id="patPageSize" class="f-inp" onchange="pat_setPageSize(this.value)">
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="200">200</option>
+                </select>
+              </label>
+              <button class="btn btn-sm btn-secondary" id="patPagerPrev" onclick="pat_pageGo(PAT._page - 1)">‹ Prev</button>
+              <span class="ord-pager-page" id="patPagerPage">1 / 1</span>
+              <button class="btn btn-sm btn-secondary" id="patPagerNext" onclick="pat_pageGo(PAT._page + 1)">Next ›</button>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -291,8 +310,27 @@ var PAT = {
   branchId:   null,
   branchName: '',
   editingId:  null,
-  isTech:     false
+  isTech:     false,
+  _page:      1,
+  _pageSize:  25
 };
+
+/* ── Pagination helpers ────────────────────────────────────── */
+function pat_pageGo(p) {
+  var total = PAT.filtered.length;
+  var pages = Math.max(1, Math.ceil(total / PAT._pageSize));
+  if (p < 1) p = 1;
+  if (p > pages) p = pages;
+  PAT._page = p;
+  pat_render();
+}
+function pat_setPageSize(n) {
+  var v = parseInt(n, 10);
+  if (!v || v < 1) v = 25;
+  PAT._pageSize = v;
+  PAT._page = 1;
+  pat_render();
+}
 var _patDeleteId = null;
 
 /* ── Skeleton ── */
@@ -310,6 +348,7 @@ function pat_init() {
   PAT.filtered   = [];
   PAT.discounts  = [];
   PAT.branchId   = null;
+  PAT._page      = 1;
   PAT.branchName = '';
   PAT.editingId  = null;
 
@@ -441,6 +480,8 @@ function pat_applyFilter() {
     var hay = [p.last_name, p.first_name, p.middle_name, p.contact, p.address, p.patient_id].join(' ').toLowerCase();
     return hay.indexOf(q) !== -1;
   });
+  // Filter changed → reset pager to first page.
+  PAT._page = 1;
   pat_render();
 }
 
@@ -452,17 +493,28 @@ function pat_render() {
     (bname ? ' · ' + bname : '') +
     (count !== PAT.all.length ? ' (filtered)' : '');
 
+  var pager = document.getElementById('patPager');
   if (!count) {
     document.getElementById('patTableBody').innerHTML =
       '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-4);font-family:var(--mono);font-size:13px;">'
       + (PAT.all.length === 0 ? 'No patients yet.' : 'No patients match your search.')
       + '</td></tr>';
+    if (pager) pager.style.display = 'none';
     return;
   }
 
+  // ── Pagination slice ─────────────────────────────────────
+  var pageSize = PAT._pageSize || 25;
+  var pages    = Math.max(1, Math.ceil(count / pageSize));
+  if (PAT._page > pages) PAT._page = pages;
+  if (PAT._page < 1)     PAT._page = 1;
+  var startIdx = (PAT._page - 1) * pageSize;
+  var endIdx   = Math.min(startIdx + pageSize, count);
+  var pageRows = PAT.filtered.slice(startIdx, endIdx);
+
   var isTech = PAT.isTech;
   var h = '';
-  PAT.filtered.forEach(function(p) {
+  pageRows.forEach(function(p) {
     var fullName = _e(p.last_name) + ', ' + _e(p.first_name) + (p.middle_name ? ' ' + _e(p.middle_name.charAt(0)) + '.' : '');
     var age      = p.dob ? pat_calcAge(p.dob) : '—';
     var dobDisp  = p.dob ? new Date(p.dob).toLocaleDateString('en-PH', {year:'numeric',month:'short',day:'numeric'}) : '—';
@@ -508,6 +560,21 @@ function pat_render() {
       + '</tr>';
   });
   document.getElementById('patTableBody').innerHTML = h;
+
+  // ── Pager footer ─────────────────────────────────────────
+  if (pager) {
+    pager.style.display = '';
+    var info = document.getElementById('patPagerInfo');
+    if (info) info.textContent = 'Showing ' + (startIdx + 1) + '–' + endIdx + ' of ' + count;
+    var pageDisp = document.getElementById('patPagerPage');
+    if (pageDisp) pageDisp.textContent = PAT._page + ' / ' + pages;
+    var prev = document.getElementById('patPagerPrev');
+    var next = document.getElementById('patPagerNext');
+    if (prev) prev.disabled = (PAT._page <= 1);
+    if (next) next.disabled = (PAT._page >= pages);
+    var sel = document.getElementById('patPageSize');
+    if (sel && String(sel.value) !== String(pageSize)) sel.value = String(pageSize);
+  }
 }
 
 function pat_calcAge(dob) {
