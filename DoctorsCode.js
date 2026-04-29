@@ -46,12 +46,16 @@ function buildDoctorBranchMap_() {
 }
 
 // ── READ ────────────────────────────────────────────────────
-function getDoctors(branchIds) {
+// includeArchived=true to also return soft-deleted rows (e.g. for an
+// "Archived Doctors" admin view).  Default: archived rows are hidden.
+function getDoctors(branchIds, includeArchived) {
   const filter = (branchIds || '').toString().trim();
-  return withCache_('doctors', filter || 'all', 60, function() { return _getDoctors_(filter); });
+  const inc    = !!includeArchived;
+  const cacheKey = (filter || 'all') + (inc ? ':inc_arch' : '');
+  return withCache_('doctors', cacheKey, 60, function() { return _getDoctors_(filter, inc); });
 }
 
-function _getDoctors_(branchIds) {
+function _getDoctors_(branchIds, includeArchived) {
   try {
     const sh = getDoctorsSheet_();
     const lr = sh.getLastRow();
@@ -59,9 +63,12 @@ function _getDoctors_(branchIds) {
 
     const branchMap = buildDoctorBranchMap_();
     const filterIds = branchIds ? branchIds.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const archCol   = findArchiveCol_(sh); // 0 if no archive col yet
 
-    const data = sh.getRange(2, 1, lr-1, 15).getValues()
+    const cols = Math.max(sh.getLastColumn(), 15);
+    const data = sh.getRange(2, 1, lr-1, cols).getValues()
       .filter(r => r[0] && String(r[0]).trim())
+      .filter(r => includeArchived || !isArchivedRow_(r, archCol))
       .map(r => {
         const bIds  = String(r[11]||'').trim();
         const bDisp = bIds
@@ -101,6 +108,7 @@ function _getDoctors_(branchIds) {
 
 // ── CREATE ───────────────────────────────────────────────────
 function createDoctor(payload) {
+  return withLock_(function() {
   try {
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
     if (!payload.first_name) return { success: false, message: 'First name is required.' };
@@ -146,10 +154,12 @@ function createDoctor(payload) {
     Logger.log('createDoctor ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ───────────────────────────────────────────────────
 function updateDoctor(payload) {
+  return withLock_(function() {
   try {
     if (!payload.doctor_id)  return { success: false, message: 'Doctor ID is required.' };
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
@@ -201,29 +211,49 @@ function updateDoctor(payload) {
     Logger.log('updateDoctor ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
-// ── DELETE ───────────────────────────────────────────────────
-function deleteDoctor(doctorId) {
-  try {
-    if (!doctorId) return { success: false, message: 'Doctor ID is required.' };
-    const sh  = getDoctorsSheet_();
-    const lr  = sh.getLastRow();
-    if (lr < 2) return { success: false, message: 'Doctor not found.' };
-
-    const ids    = sh.getRange(2, 1, lr-1, 1).getValues().flat().map(String);
-    const rowIdx = ids.findIndex(id => id.trim() === doctorId.trim());
-    if (rowIdx === -1) return { success: false, message: 'Doctor not found.' };
-
-    sh.deleteRow(rowIdx + 2);
-    cacheBust_('doctors');
-    writeAuditLog_('DOCTOR_DELETE', { doctor_id: doctorId });
-    return { success: true };
-  } catch(e) {
-    Logger.log('deleteDoctor ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+// ── ARCHIVE ─────────────────────────────────────────────────
+// Soft-delete: marks is_archived = 1.  Reads filter archived
+// rows out by default; pass include_archived=1 to see them.
+// Backward-compat alias `deleteDoctor` still works (now archives).
+function archiveDoctor(doctorId) {
+  return withLock_(function() {
+    try {
+      if (!doctorId) return { success: false, message: 'Doctor ID is required.' };
+      const sh  = getDoctorsSheet_();
+      const r   = setArchiveFlag_(sh, doctorId, true);
+      if (!r.ok) return { success: false, message: 'Doctor not found.' };
+      cacheBust_('doctors');
+      writeAuditLog_('DOCTOR_ARCHIVE', { doctor_id: doctorId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('archiveDoctor ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
+
+function unarchiveDoctor(doctorId) {
+  return withLock_(function() {
+    try {
+      if (!doctorId) return { success: false, message: 'Doctor ID is required.' };
+      const sh  = getDoctorsSheet_();
+      const r   = setArchiveFlag_(sh, doctorId, false);
+      if (!r.ok) return { success: false, message: 'Doctor not found.' };
+      cacheBust_('doctors');
+      writeAuditLog_('DOCTOR_UNARCHIVE', { doctor_id: doctorId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('unarchiveDoctor ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
+}
+
+// Backward-compat — old UIs still call deleteDoctor; route to archive.
+function deleteDoctor(doctorId) { return archiveDoctor(doctorId); }
 
 // ── GET DOCTOR REFERRALS (orders) ───────────────────────────
 function getDoctorReferrals(doctorId) {

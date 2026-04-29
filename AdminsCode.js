@@ -42,11 +42,13 @@ function getSuperAdminsSheet_() {
 // ── READ ─────────────────────────────────────────────────────
 // Returns unified list: Super Admins + Branch Admins
 // Also returns branches list for the branch picker in the modal
-function getAdmins() {
-  return withCache_('admins', 'all', 60, _getAdmins_);
+function getAdmins(includeArchived) {
+  const inc = !!includeArchived;
+  const cacheKey = inc ? 'all:inc_arch' : 'all';
+  return withCache_('admins', cacheKey, 60, function(){ return _getAdmins_(inc); });
 }
 
-function _getAdmins_() {
+function _getAdmins_(includeArchived) {
   try {
     const admins = [];
 
@@ -54,10 +56,12 @@ function _getAdmins_() {
     // Cols: A=Username B=Email C=Password D=Role E=Status
     const saSh = getSuperAdminsSheet_();
     const saLR = saSh.getLastRow();
-    const saNumCols = Math.min(saSh.getLastColumn(), 6);
+    const saNumCols = Math.max(Math.min(saSh.getLastColumn(), 7), 6);
+    const saArchCol = findArchiveCol_(saSh);
     if (saLR >= 2) {
-      saSh.getRange(2, 1, saLR - 1, saNumCols).getValues()
+      saSh.getRange(2, 1, saLR - 1, Math.max(saNumCols, saArchCol || 0)).getValues()
         .filter(r => r[0] && String(r[0]).trim())
+        .filter(r => includeArchived || !isArchivedRow_(r, saArchCol))
         .forEach(r => {
           admins.push({
             admin_id:         'SA-' + String(r[0]).trim().replace(/\W/g,'').toUpperCase(),
@@ -77,12 +81,15 @@ function _getAdmins_() {
     // ── Branch Admins from "Admins" sheet ──
     const sh = getAdminsSheet_();
     const lr = sh.getLastRow();
+    const archCol = findArchiveCol_(sh);
     if (lr >= 2) {
       // Build branch name lookup
       const branchMap = buildBranchMap_();
+      const cols = Math.max(11, sh.getLastColumn());
 
-      sh.getRange(2, 1, lr - 1, 11).getValues()
+      sh.getRange(2, 1, lr - 1, cols).getValues()
         .filter(r => r[0] && String(r[0]).trim())
+        .filter(r => includeArchived || !isArchivedRow_(r, archCol))
         .forEach(r => {
           const branchIds = String(r[7] || '').trim();
           const brDisp    = branchIds
@@ -149,6 +156,7 @@ function getBranchesForPicker_() {
 
 // ── CREATE ───────────────────────────────────────────────────
 function createAdmin(payload) {
+  return withLock_(function() {
   try {
     if (!payload.name)     return { success: false, message: 'Full name is required.' };
     if (!payload.username) return { success: false, message: 'Username is required.' };
@@ -227,10 +235,12 @@ function createAdmin(payload) {
     Logger.log('createAdmin ERROR: ' + err.message);
     return { success: false, message: err.message };
   }
+  });
 }
 
 // ── UPDATE ───────────────────────────────────────────────────
 function updateAdmin(payload) {
+  return withLock_(function() {
   try {
     if (!payload.admin_id) return { success: false, message: 'Admin ID is required.' };
     if (!payload.name)     return { success: false, message: 'Full name is required.' };
@@ -318,47 +328,81 @@ function updateAdmin(payload) {
     Logger.log('updateAdmin ERROR: ' + err.message);
     return { success: false, message: err.message };
   }
+  });
 }
 
 // ── DELETE ───────────────────────────────────────────────────
-function deleteAdmin(adminId) {
-  try {
-    if (!adminId) return { success: false, message: 'Admin ID is required.' };
+// Soft-delete: marks is_archived=1 in Super Admins or Admins sheet
+// (depending on adminId prefix).  Reads filter archived rows out by
+// default.  Refuses to archive the LAST active Super Admin to prevent
+// system lockout.
+function _setAdminArchive_(adminId, archived) {
+  if (!adminId) return { success: false, message: 'Admin ID is required.' };
 
-    if (adminId.startsWith('SA-')) {
-      // Remove from Super Admins sheet
-      const saSh    = getSuperAdminsSheet_();
-      const saLR    = saSh.getLastRow();
-      if (saLR < 2)  return { success: false, message: 'Admin not found.' };
+  if (adminId.startsWith('SA-')) {
+    const saSh = getSuperAdminsSheet_();
+    const saLR = saSh.getLastRow();
+    if (saLR < 2) return { success: false, message: 'Admin not found.' };
+    const origUsername = adminId.replace(/^SA-/, '').toLowerCase();
+    const rows = saSh.getRange(2, 1, saLR - 1, 1).getValues().flat().map(String);
+    const rowIdx = rows.findIndex(r => r.trim().toLowerCase() === origUsername);
+    if (rowIdx === -1) return { success: false, message: 'Super Admin not found.' };
 
-      const origUsername = adminId.replace(/^SA-/, '').toLowerCase();
-      const rows    = saSh.getRange(2, 1, saLR - 1, 1).getValues().flat().map(String);
-      const rowIdx  = rows.findIndex(r => r.trim().toLowerCase() === origUsername);
-      if (rowIdx === -1) return { success: false, message: 'Super Admin not found.' };
-      saSh.deleteRow(rowIdx + 2);
-
-    } else {
-      // Remove from Admins sheet
-      const sh  = getAdminsSheet_();
-      const lr  = sh.getLastRow();
-      if (lr < 2) return { success: false, message: 'Admin not found.' };
-
-      const ids    = sh.getRange(2, 1, lr - 1, 1).getValues().flat().map(String);
-      const rowIdx = ids.findIndex(id => id.trim() === adminId.trim());
-      if (rowIdx === -1) return { success: false, message: 'Admin not found.' };
-      sh.deleteRow(rowIdx + 2);
+    if (archived) {
+      // Refuse to archive the last active Super Admin
+      const archCol = findArchiveCol_(saSh);
+      const cols    = Math.max(saSh.getLastColumn(), 1);
+      const allRows = saSh.getRange(2, 1, saLR - 1, cols).getValues();
+      const activeOthers = allRows.filter((r, i) =>
+        i !== rowIdx && r[0] && String(r[0]).trim() && !isArchivedRow_(r, archCol)
+      ).length;
+      if (activeOthers === 0) {
+        return { success: false, message: 'Cannot archive the last active Super Admin.' };
+      }
     }
 
-    cacheBust_('admins');
-    writeAuditLog_('ADMIN_DELETE', { admin_id: adminId });
-    Logger.log('deleteAdmin: deleted ' + adminId);
-    return { success: true };
-
-  } catch (err) {
-    Logger.log('deleteAdmin ERROR: ' + err.message);
-    return { success: false, message: err.message };
+    const col = ensureArchiveCol_(saSh);
+    saSh.getRange(rowIdx + 2, col).setValue(archived ? 1 : 0);
+  } else {
+    const sh = getAdminsSheet_();
+    const r  = setArchiveFlag_(sh, adminId, archived);
+    if (!r.ok) return { success: false, message: 'Admin not found.' };
   }
+  return { success: true };
 }
+
+function archiveAdmin(adminId) {
+  return withLock_(function() {
+    try {
+      const r = _setAdminArchive_(adminId, true);
+      if (!r.success) return r;
+      cacheBust_('admins');
+      writeAuditLog_('ADMIN_ARCHIVE', { admin_id: adminId });
+      return { success: true };
+    } catch (err) {
+      Logger.log('archiveAdmin ERROR: ' + err.message);
+      return { success: false, message: err.message };
+    }
+  });
+}
+
+function unarchiveAdmin(adminId) {
+  return withLock_(function() {
+    try {
+      const r = _setAdminArchive_(adminId, false);
+      if (!r.success) return r;
+      cacheBust_('admins');
+      writeAuditLog_('ADMIN_UNARCHIVE', { admin_id: adminId });
+      return { success: true };
+    } catch (err) {
+      Logger.log('unarchiveAdmin ERROR: ' + err.message);
+      return { success: false, message: err.message };
+    }
+  });
+}
+
+// Backward-compat — old UIs still call deleteAdmin; route to archive.
+function deleteAdmin(adminId) { return archiveAdmin(adminId); }
 
 // ── LOGIN — UPDATED ──────────────────────────────────────────
 // Now checks BOTH sheets. Super Admins get full access.
@@ -371,10 +415,11 @@ function loginStaff_(usernameOrEmail, password) {
     const inputPass = (password || '').toString().trim();
 
     // ── Check Super Admins sheet first ──
-    const saSh = getSuperAdminsSheet_();
-    const saLR = saSh.getLastRow();
+    const saSh    = getSuperAdminsSheet_();
+    const saLR    = saSh.getLastRow();
+    const saArchCol = findArchiveCol_(saSh);
     if (saLR >= 2) {
-      const numCols = Math.min(saSh.getLastColumn(), 6);
+      const numCols = Math.max(Math.min(saSh.getLastColumn(), 7), 6);
       const saRows  = saSh.getRange(2, 1, saLR - 1, numCols).getValues();
       for (const row of saRows) {
         const username  = String(row[0] || '').trim();
@@ -384,6 +429,7 @@ function loginStaff_(usernameOrEmail, password) {
         const status    = String(row[4] || '').trim().toLowerCase();
         const photoUrl  = String(row[5] || '').trim();
         if (status === 'inactive') continue;
+        if (isArchivedRow_(row, saArchCol)) continue;
         if ((username.toLowerCase() === inputUser || email === inputUser) && pass === inputPass) {
           Logger.log('loginAdmin: Super Admin match — ' + username);
           return {
@@ -402,10 +448,11 @@ function loginStaff_(usernameOrEmail, password) {
     }
 
     // ── Check Branch Admins sheet ──
-    const sh = getAdminsSheet_();
-    const lr = sh.getLastRow();
+    const sh      = getAdminsSheet_();
+    const lr      = sh.getLastRow();
+    const archCol = findArchiveCol_(sh);
     if (lr >= 2) {
-      const numCols = Math.min(sh.getLastColumn(), 11);
+      const numCols = Math.max(Math.min(sh.getLastColumn(), 12), 11);
       const rows    = sh.getRange(2, 1, lr - 1, numCols).getValues();
       for (const row of rows) {
         const username  = String(row[2] || '').trim();
@@ -416,6 +463,7 @@ function loginStaff_(usernameOrEmail, password) {
         const branchIds = String(row[7] || '').trim();
         const photoUrl  = String(row[10]|| '').trim();
         if (status === 'inactive') continue;
+        if (isArchivedRow_(row, archCol)) continue;
         if ((username.toLowerCase() === inputUser || email === inputUser) && pass === inputPass) {
           Logger.log('loginAdmin: Branch Admin match — ' + username);
           return {
