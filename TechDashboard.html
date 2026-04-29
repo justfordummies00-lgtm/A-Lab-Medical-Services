@@ -162,13 +162,20 @@
 
         <!-- Release button (shown when FOR_RELEASE) -->
         <div id="panelReleaseCard" style="display:none;" class="card">
-          <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;">
+          <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
             <div>
               <div style="font-size:13px;font-weight:700;color:var(--text-1);">✅ Results are ready for release</div>
-              <div style="font-size:11px;color:var(--text-3);margin-top:2px;">All items encoded. Release to patient when ready.</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px;">All items encoded. Generate a combined report, then release to patient.</div>
             </div>
-            <button class="btn btn-primary" id="panelReleaseBtn" onclick="techdash_releaseOrder()">Release to Patient</button>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-secondary" id="panelBundleBtn" onclick="techdash_generateLabBundle()" title="Combine all param-mode lab results into one DOCX, grouped by category">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 20h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                Generate Combined Report
+              </button>
+              <button class="btn btn-primary" id="panelReleaseBtn" onclick="techdash_releaseOrder()">Release to Patient</button>
+            </div>
           </div>
+          <div id="panelBundleResult" style="display:none;padding:0 20px 14px;font-size:11px;color:var(--text-2);"></div>
         </div>
       </div>
     </div>
@@ -1171,6 +1178,41 @@ function techdash_printPdf(url) {
 function techdash_markDirty(itemId) {
   TDASH.draftDirty[itemId] = true;
   techdash_renderItemChips();
+}
+
+function techdash_generateLabBundle() {
+  if (!TDASH.selectedOrderId) return;
+  var btn = document.getElementById('panelBundleBtn');
+  var resDiv = document.getElementById('panelBundleResult');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+  var encodedBy = APP.user ? APP.user.admin_id : '';
+  google.script.run
+    .withSuccessHandler(function (r) {
+      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 20h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg> Generate Combined Report'; }
+      if (!r || !r.success) {
+        toast('error', (r && r.message) || 'Failed to generate combined report.');
+        return;
+      }
+      if (resDiv) {
+        var catsHtml = (r.categories || []).map(function (c) { return '<span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;border-radius:10px;background:rgba(16,168,168,.08);color:var(--teal-600);font-weight:600;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">' + c + '</span>'; }).join('');
+        var skipHtml = '';
+        if (r.skipped_sheet_template && r.skipped_sheet_template.length) {
+          skipHtml = '<div style="margin-top:6px;color:var(--text-3);">Note: ' + r.skipped_sheet_template.length + ' service(s) with Sheet templates are kept separately (they use spreadsheet formulas).</div>';
+        }
+        resDiv.style.display = '';
+        resDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+          + '<span style="font-weight:700;color:var(--text-1);">Combined report ready:</span>'
+          + catsHtml
+          + '<a href="' + r.docxUrl + '" target="_blank" class="btn btn-primary btn-sm" style="margin-left:auto;">Open DOCX</a>'
+          + '</div>' + skipHtml;
+      }
+      toast('success', 'Combined lab report generated.');
+    })
+    .withFailureHandler(function (e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Generate Combined Report'; }
+      toast('error', e.message || 'Error.');
+    })
+    .generateLabResultsBundle(TDASH.branchId, TDASH.selectedOrderId, encodedBy);
 }
 
 function techdash_releaseOrder() {

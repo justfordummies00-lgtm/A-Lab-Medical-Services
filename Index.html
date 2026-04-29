@@ -153,6 +153,12 @@
           </svg>
           <span class="sb-nav-label sb-label" id="sbTechQueueLabel">Lab Queue</span>
         </a>
+        <a class="sb-nav-item" data-page="lab-results-preview" data-label="Results Preview" onclick="navigateTo('lab-results-preview')">
+          <svg class="sb-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6M7 20h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <span class="sb-nav-label">Results Preview</span>
+        </a>
         <a class="sb-nav-item" data-page="orders" data-label="Orders" onclick="navigateTo('orders')">
           <svg class="sb-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
@@ -426,6 +432,7 @@
       <?!= include('Dashboard') ?>
       <?!= include('DoctorDashboard') ?>
       <?!= include('TechDashboard') ?>
+      <?!= include('LabResultsPreview') ?>
       <?!= include('ReceptionistDashboard') ?>
       <?!= include('LiaisonDashboard') ?>
       <?!= include('Reports') ?>

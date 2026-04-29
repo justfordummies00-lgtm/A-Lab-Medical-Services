@@ -1150,6 +1150,11 @@ function saveLabResultAndPdf(branchId, orderId, orderItemId, servId, servName, p
       itemsSh.appendRow([rid, orderId, orderItemId, servName || 'Lab Result', gen.docxUrl, 'LAB_DOCX', '', '', encodedBy, new Date()]);
     }
 
+    // Cache raw param values so the combined bundle renderer can re-use them
+    // without reopening each per-item DOCX. Safe no-op on failure.
+    try { saveLabItemRawValues_(branchId, orderId, orderItemId, params || []); }
+    catch (e) { Logger.log('saveLabItemRawValues_ call failed: ' + e.message); }
+
     // Mark encoded
     if (itemSh && itemSh.getLastRow() >= 2) {
       ensureItemCols_(itemSh);
