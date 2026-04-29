@@ -601,7 +601,7 @@ function lrp_renderCategoryPage(cat, patient, signatures) {
 function lrp_printAll() {
   var printArea = document.getElementById('lrpPrintArea');
   if (!printArea || !printArea.innerHTML.trim()) {
-    toast('warning', 'No results to print.');
+    toast('info', 'No results to print.');
     return;
   }
   window.print();
