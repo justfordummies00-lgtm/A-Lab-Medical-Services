@@ -403,16 +403,29 @@ function saveTemplateSettings(branchId, settings) {
   }
 }
 
+function _getTemplatesFolder_() {
+  var rootId = getSettingValue_('alab_root_folder_id', '');
+  if (rootId) {
+    var root = DriveApp.getFolderById(rootId);
+    var tf = root.getFoldersByName('Templates');
+    var templatesFolder = tf.hasNext() ? tf.next() : root.createFolder('Templates');
+    var hf = templatesFolder.getFoldersByName('Headers');
+    return hf.hasNext() ? hf.next() : templatesFolder.createFolder('Headers');
+  }
+  var fb = DriveApp.getRootFolder().getFoldersByName('A-Lab Templates');
+  return fb.hasNext() ? fb.next() : DriveApp.getRootFolder().createFolder('A-Lab Templates');
+}
+
 function uploadTemplateHeaderImage(branchId, base64Data, mimeType) {
   try {
     if (!base64Data || !branchId) return { success: false, message: 'Missing data.' };
-    const sigFolder = _getSignaturesFolder_(branchId);
+    const folder = _getTemplatesFolder_();
     const ext = mimeType === 'image/png' ? '.png' : mimeType === 'image/webp' ? '.webp' : '.jpg';
     const name = 'template_header_' + branchId + ext;
-    const old = sigFolder.getFilesByName(name);
+    const old = folder.getFilesByName(name);
     while (old.hasNext()) old.next().setTrashed(true);
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
-    const file = sigFolder.createFile(blob);
+    const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w800';
     // Save URL into template settings
