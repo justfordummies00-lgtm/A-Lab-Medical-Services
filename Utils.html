@@ -16,6 +16,7 @@ var PAGES = {
   'tech-dashboard':     { label: 'Dashboard',         path: 'A-Lab / Dashboard' },
   'tech-queue':         { label: 'Queue',             path: 'A-Lab / Queue' },
   'lab-results-preview':{ label: 'Results Preview',   path: 'A-Lab / Results Preview' },
+  'template-settings':  { label: 'Template Settings', path: 'A-Lab / Template Settings' },
   'rec-dashboard':      { label: 'Dashboard',        path: 'A-Lab / Dashboard' },
   'liaison-dashboard':  { label: 'Dashboard',        path: 'A-Lab / Dashboard' },
   'reports':            { label: 'Reports',           path: 'A-Lab / Reports' },
@@ -301,7 +302,8 @@ function doLogout() {
   if (typeof RPT   !== 'undefined') { RPT.data = null; RPT.services = []; RPT.branchId = null; RPT.branches = []; }
   // Clear liaison state if exists
   if (typeof LIA   !== 'undefined') { LIA.all = []; LIA.branchId = null; }
-  if (typeof LRP   !== 'undefined') { LRP.allOrders = []; LRP.filteredOrders = []; LRP.selectedOrderId = null; LRP.selectedOrderData = null; LRP.categories = []; LRP.activeCategory = null; LRP.branchId = null; }
+  if (typeof LRP   !== 'undefined') { LRP.allOrders = []; LRP.filteredOrders = []; LRP.selectedOrderId = null; LRP.selectedOrderData = null; LRP.categories = []; LRP.activeCategory = null; LRP.branchId = null; LRP.templateSettings = {}; }
+  if (typeof TS    !== 'undefined') { TS.branchId = null; TS.settings = {}; }
 
   document.getElementById('lUser').value = '';
   document.getElementById('lPass').value = '';
@@ -343,6 +345,7 @@ function navigateTo(page) {
   if (page === 'tech-dashboard'    && typeof techdash_load === 'function') techdash_load();
   if (page === 'tech-queue'        && typeof techdash_load === 'function') techdash_load();
   if (page === 'lab-results-preview' && typeof lrp_init === 'function') lrp_init();
+  if (page === 'template-settings' && typeof ts_init === 'function') ts_init();
   if (page === 'doctor-dashboard'  && typeof drdash_load   === 'function') drdash_load();
   if (page === 'rec-dashboard'     && typeof recdash_load  === 'function') recdash_load();
   if (page === 'liaison-dashboard' && typeof liaisondash_load === 'function') liaisondash_load();
