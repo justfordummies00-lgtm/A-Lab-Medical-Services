@@ -407,20 +407,48 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
             const hasGrant     = grantedPatients.has(patId);
             const locked       = !isHomeBranch && !hasGrant;
 
-            results.push({
-              patient_id:   patId,
-              last_name:    lastName,
-              first_name:   firstName,
-              middle_name:  String(r[3]||'').trim(),
-              sex:          String(r[4]||'').trim(),
-              dob:          r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
-              contact:      contact,
-              home_branch:  branchName,
-              home_branch_id: homeBranch,
+            // Locked rows surface only the bare minimum needed to recognise
+            // the patient and request access — no contact, no address, no
+            // discount IDs, no PhilHealth, no demographics beyond name.
+            results.push(locked ? {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        '',
+              sex:                '',
+              dob:                '',
+              contact:            '',
+              email:              '',
+              address:            '',
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
               enrolled_branch_id: branchId,
-              locked:       locked,
-              philhealth_pin: locked ? '' : String(r[9]||'').trim(),
-              discount_ids:   locked ? '' : String(r[10]||'').trim()
+              locked:             true,
+              philhealth_pin:     '',
+              discount_ids:       '',
+              discounts_display:  '',
+              senior_citizen_id:  '',
+              pwd_id:             '',
+              is_4ps:             0
+            } : {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        String(r[3]||'').trim(),
+              sex:                String(r[4]||'').trim(),
+              dob:                r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+              contact:            contact,
+              email:              String(r[7]||'').trim(),
+              address:            String(r[8]||'').trim(),
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
+              enrolled_branch_id: branchId,
+              locked:             false,
+              philhealth_pin:     String(r[9]||'').trim(),
+              discount_ids:       String(r[10]||'').trim(),
+              senior_citizen_id:  String(r[16]||'').trim(),
+              pwd_id:             String(r[17]||'').trim(),
+              is_4ps:             r[14]==1 ? 1 : 0
             });
           });
       } catch(brErr) {

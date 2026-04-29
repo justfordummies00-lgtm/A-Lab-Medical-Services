@@ -921,6 +921,85 @@ function getPatientResults(branchId, patientId) {
   }
 }
 
+// ── GET PATIENT ORDER HISTORY ───────────────────────────────
+// Returns ALL orders for the patient (any status, including those with no
+// encoded results yet) with summary info — order_no, status, date, total,
+// payment_status, item count, encoded count.  Used by the Patient profile
+// modal's "Order History" tab so techs can see the full timeline of every
+// test the patient has been through at this branch.
+//
+// Archived orders are excluded by default; pass includeArchived=true to
+// include them.
+function getPatientOrderHistory(branchId, patientId, includeArchived) {
+  try {
+    if (!branchId || !patientId) return { success: false, message: 'Missing params.' };
+    const ss     = getOrderSS_(branchId);
+    const ordSh  = ss.getSheetByName('LAB_ORDER');
+    const itemSh = ss.getSheetByName('LAB_ORDER_ITEM');
+    const rSh    = ss.getSheetByName('RESULT_ITEMS');
+
+    if (!ordSh || ordSh.getLastRow() < 2) return { success: true, data: [] };
+
+    const ordCols = Math.max(ordSh.getLastColumn(), 24);
+    const orders = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, ordCols).getValues()
+      .filter(r => r[0] && String(r[3]).trim() === patientId)
+      .filter(r => includeArchived || String(r[6]).trim() !== 'ARCHIVED')
+      .map(r => ({
+        order_id:       String(r[0]).trim(),
+        order_no:       String(r[1]).trim(),
+        order_date:     r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+        status:         String(r[6]).trim(),
+        doctor_name:    String(r[12] || '').trim(),
+        net_amount:     Number(r[14]) || 0,
+        order_types:    String(r[21] || 'lab').trim() || 'lab',
+        payment_status: String(r[23] || 'UNPAID').trim() || 'UNPAID',
+        items_count:    0,
+        encoded_count:  0
+      }));
+
+    if (!orders.length) return { success: true, data: [] };
+
+    // Item counts and per-item result counts in one pass each.
+    const orderIds = new Set(orders.map(o => o.order_id));
+    const orderMap = {};
+    orders.forEach(o => { orderMap[o.order_id] = o; });
+
+    const itemMap = {};
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      const itemCols = Math.max(itemSh.getLastColumn(), 16);
+      itemSh.getRange(2, 1, itemSh.getLastRow() - 1, itemCols).getValues()
+        .filter(r => r[0] && orderIds.has(String(r[1]).trim()))
+        .forEach(r => {
+          const itemId = String(r[0]).trim();
+          const ordId  = String(r[1]).trim();
+          itemMap[itemId] = ordId;
+          if (orderMap[ordId]) orderMap[ordId].items_count++;
+        });
+    }
+    if (rSh && rSh.getLastRow() >= 2) {
+      const rCols = Math.max(rSh.getLastColumn(), 14);
+      const seen = {};
+      rSh.getRange(2, 1, rSh.getLastRow() - 1, rCols).getValues()
+        .filter(r => r[0] && itemMap[String(r[2]).trim()])
+        .forEach(r => {
+          const itemId = String(r[2]).trim();
+          if (seen[itemId]) return;
+          seen[itemId] = true;
+          const ordId = itemMap[itemId];
+          if (orderMap[ordId]) orderMap[ordId].encoded_count++;
+        });
+    }
+
+    orders.sort((a, b) => b.order_date.localeCompare(a.order_date) ||
+                          b.order_no.localeCompare(a.order_no));
+    Logger.log('getPatientOrderHistory: ' + branchId + ' / ' + patientId + ' → ' + orders.length);
+    return { success: true, data: orders };
+  } catch (e) {
+    Logger.log('getPatientOrderHistory ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── GET BRANCH PATIENTS (patient search in wizard) ────────────
 function getBranchPatients(branchId, query) {
   try {

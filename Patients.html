@@ -41,12 +41,25 @@
 
         <!-- Search -->
         <div id="patSearchBar" style="display:none;margin-bottom:16px;">
-          <div style="position:relative;">
-            <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-4);" width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
-            </svg>
-            <input type="text" id="patSearch" class="f-inp" style="padding-left:34px;font-size:13px;"
-              placeholder="Search name, contact, address…" oninput="pat_applyFilter()">
+          <div style="display:flex;gap:10px;align-items:stretch;flex-wrap:wrap;">
+            <div style="position:relative;flex:1;min-width:240px;">
+              <svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);pointer-events:none;color:var(--text-4);" width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+              </svg>
+              <input type="text" id="patSearch" class="f-inp" style="padding-left:34px;font-size:13px;"
+                placeholder="Search name, contact, address…" oninput="pat_onSearchInput()">
+            </div>
+            <!-- Cross-branch toggle — only shown to Technologists.  When ON,
+                 the search bar queries every branch via
+                 searchPatientsAcrossBranches and shows locked rows for
+                 patients enrolled at other branches without an access grant. -->
+            <label id="patCrossBranchWrap" style="display:none;align-items:center;gap:8px;padding:0 12px;border:1.5px solid var(--border);border-radius:var(--radius-md);background:var(--white);cursor:pointer;font-size:12px;color:var(--text-2);font-weight:600;white-space:nowrap;">
+              <input type="checkbox" id="patCrossBranchToggle" onchange="pat_toggleCrossBranch(this.checked)" style="cursor:pointer;">
+              <span>🌐 Search all branches</span>
+            </label>
+          </div>
+          <div id="patCrossBranchHint" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,96,176,.06);border:1px solid rgba(0,96,176,.18);border-radius:var(--radius-md);font-size:11px;color:var(--text-2);">
+            🌐 <b>Cross-branch search active.</b> Patients enrolled at other branches show as <span style="font-family:var(--mono);">🔒 locked</span> until that branch grants you access. Type at least 2 characters to search.
           </div>
         </div>
 
@@ -259,6 +272,7 @@
             <!-- Tab nav -->
             <div style="display:flex;gap:4px;">
               <button id="patTabProfile" onclick="pat_switchTab('profile')" style="padding:8px 16px;border:none;background:rgba(255,255,255,.15);color:#fff;border-radius:8px 8px 0 0;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);">Profile</button>
+              <button id="patTabHistory" onclick="pat_switchTab('history')" style="padding:8px 16px;border:none;background:transparent;color:rgba(255,255,255,.6);border-radius:8px 8px 0 0;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);">Order History</button>
               <button id="patTabResults" onclick="pat_switchTab('results')" style="padding:8px 16px;border:none;background:transparent;color:rgba(255,255,255,.6);border-radius:8px 8px 0 0;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--font);">Lab Results</button>
             </div>
           </div>
@@ -268,6 +282,10 @@
             <!-- Profile tab -->
             <div id="patTabContentProfile">
               <div id="patViewBody" style="padding:16px 24px;display:flex;flex-direction:column;gap:0;"></div>
+            </div>
+            <!-- Order History tab — every order this patient has had at this branch -->
+            <div id="patTabContentHistory" style="display:none;padding:16px 24px;">
+              <div id="patHistoryBody"><div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">Loading order history…</div></div>
             </div>
             <!-- Results tab -->
             <div id="patTabContentResults" style="display:none;padding:16px 24px;">
@@ -312,7 +330,13 @@ var PAT = {
   editingId:  null,
   isTech:     false,
   _page:      1,
-  _pageSize:  25
+  _pageSize:  25,
+  // Cross-branch search state — when ON, the search bar queries every
+  // branch via searchPatientsAcrossBranches.  Locked rows (no access
+  // grant from the home branch) render with limited fields and a lock
+  // badge instead of full patient detail.
+  _crossBranch: false,
+  _xbDebounce:  null
 };
 
 /* ── Pagination helpers ────────────────────────────────────── */
@@ -375,6 +399,17 @@ function pat_init() {
   document.getElementById('patBranchSelector').style.display = isSA ? '' : 'none';
   document.getElementById('patBANote').style.display         = isBA ? 'flex' : 'none';
   document.getElementById('patAddBtn').style.display         = canEdit ? '' : 'none';
+  // Cross-branch search toggle is reserved for Technologists — they're
+  // the only role with a workflow that legitimately needs to look up a
+  // patient enrolled at another branch (e.g. a referred lab/x-ray).
+  // Receptionists / BAs are intentionally limited to their own branch.
+  var xb = document.getElementById('patCrossBranchWrap');
+  if (xb) xb.style.display = isTech ? 'inline-flex' : 'none';
+  PAT._crossBranch = false;
+  var xbToggle = document.getElementById('patCrossBranchToggle');
+  if (xbToggle) xbToggle.checked = false;
+  var xbHint = document.getElementById('patCrossBranchHint');
+  if (xbHint) xbHint.style.display = 'none';
 
   if (isSA) {
     // SA: load branches into selector, show empty state until selected
@@ -473,6 +508,75 @@ function pat_load() {
 }
 
 /* ── Filter + Render ── */
+
+/* Search input handler — picks the right backend path. ────────
+   When cross-branch mode is OFF we filter the in-memory PAT.all (fast
+   client-side filter, identical to the original behaviour).  When ON,
+   we debounce keystrokes and fire searchPatientsAcrossBranches so the
+   table reflects every branch in the system. */
+function pat_onSearchInput() {
+  if (!PAT._crossBranch) {
+    pat_applyFilter();
+    return;
+  }
+  if (PAT._xbDebounce) clearTimeout(PAT._xbDebounce);
+  PAT._xbDebounce = setTimeout(function() {
+    var q = (document.getElementById('patSearch').value || '').trim();
+    if (q.length < 2) {
+      // Don't pull every branch's full sheet on a single character —
+      // ask the user for a meaningful query first.
+      PAT.all = []; PAT.filtered = []; PAT._page = 1; pat_render();
+      return;
+    }
+    pat_doCrossBranchSearch(q);
+  }, 300);
+}
+
+function pat_doCrossBranchSearch(q) {
+  document.getElementById('patTableBody').innerHTML = pat_skeleton();
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        toast('error', (r && r.message) || 'Cross-branch search failed.');
+        return;
+      }
+      // Surface results as the new universe — pat_applyFilter is a no-op
+      // because the server already filtered, but we still call it to
+      // refresh PAT.filtered and reset the pager.
+      PAT.all      = r.data || [];
+      PAT.filtered = PAT.all.slice();
+      PAT._page    = 1;
+      pat_render();
+    })
+    .withFailureHandler(function(e) {
+      toast('error', 'Cross-branch search failed: ' + e.message);
+    })
+    .searchPatientsAcrossBranches(PAT.branchId, q);
+}
+
+function pat_toggleCrossBranch(on) {
+  PAT._crossBranch = !!on;
+  var hint = document.getElementById('patCrossBranchHint');
+  if (hint) hint.style.display = on ? '' : 'none';
+  if (on) {
+    // Reset the table to a clean slate; user must type ≥2 chars to search.
+    PAT.all = []; PAT.filtered = []; PAT._page = 1;
+    document.getElementById('patSubtitle').textContent = 'Type at least 2 characters to search all branches';
+    document.getElementById('patTableBody').innerHTML =
+      '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-4);font-size:13px;">'
+      + '🌐 Cross-branch search is on. Type a name, contact, or patient ID to search every branch.'
+      + '</td></tr>';
+    var pager = document.getElementById('patPager'); if (pager) pager.style.display = 'none';
+    // If there's already a query, fire it immediately.
+    var q = (document.getElementById('patSearch').value || '').trim();
+    if (q.length >= 2) pat_doCrossBranchSearch(q);
+  } else {
+    // Switch back to own-branch — reload local patients.
+    document.getElementById('patSearch').value = '';
+    if (PAT.branchId) pat_load();
+  }
+}
+
 function pat_applyFilter() {
   var q = (document.getElementById('patSearch').value || '').trim().toLowerCase();
   PAT.filtered = PAT.all.filter(function(p) {
@@ -513,15 +617,49 @@ function pat_render() {
   var pageRows = PAT.filtered.slice(startIdx, endIdx);
 
   var isTech = PAT.isTech;
+  var crossBranch = PAT._crossBranch;
   var h = '';
   pageRows.forEach(function(p) {
     var fullName = _e(p.last_name) + ', ' + _e(p.first_name) + (p.middle_name ? ' ' + _e(p.middle_name.charAt(0)) + '.' : '');
     var age      = p.dob ? pat_calcAge(p.dob) : '—';
     var dobDisp  = p.dob ? new Date(p.dob).toLocaleDateString('en-PH', {year:'numeric',month:'short',day:'numeric'}) : '—';
 
+    // ── Locked cross-branch row: patient is enrolled at another branch
+    // and that branch hasn't granted us access.  We show only the name,
+    // home-branch hint, and a disabled View button — no PHI, no IDs,
+    // no contact, no address. ────────────────────────────────────
+    if (p.locked) {
+      h += '<tr id="pat-row-' + _e(p.patient_id) + '" style="background:rgba(100,116,139,.04);">'
+        + '<td>'
+          + '<div style="font-weight:700;color:var(--text-2);font-size:13px;display:flex;align-items:center;gap:6px;">'
+          +   '<span title="Locked – home branch has not granted access">🔒</span>' + fullName
+          + '</div>'
+          + '<div style="font-size:10px;color:var(--text-4);font-family:var(--mono);margin-top:1px;">' + _e(p.patient_id) + '</div>'
+        + '</td>'
+        + '<td style="font-size:12px;color:var(--text-4);font-style:italic;">—</td>'
+        + '<td style="font-size:12px;color:var(--text-4);font-style:italic;">—</td>'
+        + '<td style="font-size:12px;color:var(--text-4);font-style:italic;">—</td>'
+        + '<td colspan="2" style="font-size:11px;color:var(--text-3);">'
+        +   '<span style="display:inline-block;padding:2px 8px;border-radius:20px;font-weight:700;font-size:10px;background:rgba(100,116,139,.1);color:#475569;">🏥 Home: ' + _e(p.home_branch || '—') + '</span>'
+        +   '<div style="font-size:10px;color:var(--text-4);margin-top:3px;">PHI hidden until home branch grants access</div>'
+        + '</td>'
+        + '<td style="font-size:12px;color:var(--text-4);">—</td>'
+        + '<td style="text-align:center;">'
+        +   '<button class="btn btn-sm btn-secondary" disabled style="padding:5px 10px;opacity:.5;cursor:not-allowed;" title="Locked – ask the home branch (' + _e(p.home_branch||'') + ') to grant access">🔒 Locked</button>'
+        + '</td>'
+        + '</tr>';
+      return;
+    }
+
+    // Cross-branch but unlocked → tag with home branch so techs see at
+    // a glance that this isn't a local patient.
+    var xbBadge = (crossBranch && p.home_branch_id && p.home_branch_id !== PAT.branchId)
+      ? ' <span class="badge" style="background:rgba(0,96,176,.08);color:var(--teal-700);font-size:10px;">🏥 ' + _e(p.home_branch||'') + '</span>'
+      : '';
+
     h += '<tr id="pat-row-' + _e(p.patient_id) + '">'
       + '<td>'
-        + '<div style="font-weight:700;color:var(--text-1);font-size:13px;">' + fullName + '</div>'
+        + '<div style="font-weight:700;color:var(--text-1);font-size:13px;">' + fullName + xbBadge + '</div>'
         + '<div style="font-size:10px;color:var(--text-4);font-family:var(--mono);margin-top:1px;">' + _e(p.patient_id) + '</div>'
       + '</td>'
       + '<td style="font-size:12px;color:var(--text-2);">' + _e(p.sex || '—') + '</td>'
@@ -547,7 +685,7 @@ function pat_render() {
           + '<button class="btn btn-sm btn-secondary" onclick="pat_openView(\'' + _e(p.patient_id) + '\')" style="padding:5px 10px;" title="View">'
             + '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>'
           + '</button>'
-          + (isTech
+          + (isTech && !crossBranch
             ? '<button class="btn btn-sm btn-secondary" onclick="pat_openEdit(\'' + _e(p.patient_id) + '\')" style="padding:5px 10px;" title="Edit">'
               + '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
               + '</button>'
@@ -842,6 +980,12 @@ function pat_confirmDelete() {
 function pat_openView(id) {
   var p = PAT.all.find(function(x){ return x.patient_id === id; });
   if (!p) return;
+  // Locked rows in cross-branch search must never reach the modal.
+  if (p.locked) {
+    toast('info', '🔒 This patient is enrolled at ' + (p.home_branch||'another branch')
+      + '. Ask the home branch to grant access.');
+    return;
+  }
 
   var fullName = p.last_name + ', ' + p.first_name + (p.middle_name ? ' ' + p.middle_name : '');
   var initials = (p.last_name[0] + p.first_name[0]).toUpperCase();
@@ -854,20 +998,24 @@ function pat_openView(id) {
   var age    = p.dob ? pat_calcAge(p.dob) : '—';
   var dobFmt = p.dob ? new Date(p.dob).toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'}) : '—';
 
+  // ── Discount-eligibility IDs are surfaced unconditionally so the tech
+  // can see at a glance which discounts the patient qualifies for before
+  // encoding/release. ──────────────────────────────────────────────
   var fields = [
-    { label: 'Last Name',    value: p.last_name },
-    { label: 'First Name',   value: p.first_name },
-    { label: 'Middle Name',  value: p.middle_name || '—' },
-    { label: 'Sex',          value: p.sex },
-    { label: 'Date of Birth',value: dobFmt + ' (' + age + ' yrs old)' },
-    { label: 'Contact',      value: _phoneDisplay(p.contact), mono: true },
-    { label: 'Email',        value: p.email || '—' },
-    { label: 'Address',      value: p.address },
-    { label: 'PhilHealth',   value: p.philhealth_pin ? '✓ Member — ' + p.philhealth_pin : '✗ Not a member' },
-    { label: 'Discounts',    value: p.discounts_display || '—' }
+    { label: 'Last Name',          value: p.last_name },
+    { label: 'First Name',         value: p.first_name },
+    { label: 'Middle Name',        value: p.middle_name || '—' },
+    { label: 'Sex',                value: p.sex },
+    { label: 'Date of Birth',      value: dobFmt + ' (' + age + ' yrs old)' },
+    { label: 'Contact',            value: _phoneDisplay(p.contact), mono: true },
+    { label: 'Email',              value: p.email || '—' },
+    { label: 'Address',            value: p.address },
+    { label: 'PhilHealth PIN',     value: p.philhealth_pin    ? '✓ ' + p.philhealth_pin    : '— Not a member', mono: !!p.philhealth_pin },
+    { label: 'Senior Citizen ID',  value: p.senior_citizen_id ? '✓ ' + p.senior_citizen_id : '—',              mono: !!p.senior_citizen_id },
+    { label: 'PWD ID',             value: p.pwd_id            ? '✓ ' + p.pwd_id            : '—',              mono: !!p.pwd_id },
+    { label: '4P\'s Beneficiary',  value: (p.is_4ps == 1 || p.is_4ps === true || p.is_4ps === '1') ? '✓ Yes' : '—' },
+    { label: 'Discounts',          value: p.discounts_display || '—' }
   ];
-  if (p.senior_citizen_id) fields.push({ label: 'Senior Citizen ID', value: p.senior_citizen_id, mono: true });
-  if (p.pwd_id)            fields.push({ label: 'PWD ID',            value: p.pwd_id,            mono: true });
 
   document.getElementById('patViewBody').innerHTML = fields.map(function(f) {
     return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);">'
@@ -897,9 +1045,11 @@ function pat_openView(id) {
 
   _patViewPatientId = id;
   _patViewActiveTab = 'profile';
-  pat_switchTab('profile');
-  document.getElementById('patTabContentResults').style.display = 'none';
+  // Reset the lazy-loaded tab bodies so a stale render from a previous
+  // patient doesn't flash for a moment when the user switches tabs.
+  document.getElementById('patHistoryBody').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">Loading order history…</div>';
   document.getElementById('patResultsBody').innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">Loading results…</div>';
+  pat_switchTab('profile');
   document.getElementById('patViewModal').style.display = 'flex';
 }
 
@@ -913,17 +1063,115 @@ var _patViewPatientId = null;
 
 function pat_switchTab(tab) {
   _patViewActiveTab = tab;
-  var isProfile = tab === 'profile';
-  document.getElementById('patTabContentProfile').style.display = isProfile ? '' : 'none';
-  document.getElementById('patTabContentResults').style.display = !isProfile ? '' : 'none';
-  document.getElementById('patTabProfile').style.background  = isProfile ? 'rgba(255,255,255,.15)' : 'transparent';
-  document.getElementById('patTabProfile').style.color       = isProfile ? '#fff' : 'rgba(255,255,255,.6)';
-  document.getElementById('patTabResults').style.background  = !isProfile ? 'rgba(255,255,255,.15)' : 'transparent';
-  document.getElementById('patTabResults').style.color       = !isProfile ? '#fff' : 'rgba(255,255,255,.6)';
+  // Three lazy-loaded tabs: profile (sync from PAT.all), history, results.
+  var tabs = ['profile', 'history', 'results'];
+  tabs.forEach(function(t) {
+    var on = (t === tab);
+    var key = t.charAt(0).toUpperCase() + t.slice(1);
+    var content = document.getElementById('patTabContent' + key);
+    var btn     = document.getElementById('patTab'        + key);
+    if (content) content.style.display = on ? '' : 'none';
+    if (btn) {
+      btn.style.background = on ? 'rgba(255,255,255,.15)' : 'transparent';
+      btn.style.color      = on ? '#fff' : 'rgba(255,255,255,.6)';
+    }
+  });
 
   if (tab === 'results' && _patViewPatientId && PAT.branchId) {
     pat_loadResults(_patViewPatientId, PAT.branchId);
+  } else if (tab === 'history' && _patViewPatientId && PAT.branchId) {
+    pat_loadHistory(_patViewPatientId, PAT.branchId);
   }
+}
+
+/* ── Order History tab loader ────────────────────────────────
+   Pulls every order the patient has had at this branch (any status,
+   excluding ARCHIVED) so techs can see the full timeline of tests at
+   a glance — order #, date, type, status, encoded result count, total,
+   payment status — alongside the encoded findings on the Results tab. */
+function pat_loadHistory(patientId, branchId) {
+  var body = document.getElementById('patHistoryBody');
+  if (!body) return;
+  body.innerHTML = '<div style="text-align:center;padding:32px;color:var(--text-4);font-family:var(--mono);font-size:13px;">'
+    + '<span class="spinner spinner-teal" style="display:inline-block;margin-bottom:8px;"></span><br>Loading order history…</div>';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (!r || !r.success) {
+        body.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:13px;">'
+          + _e((r && r.message) || 'Failed to load order history.') + '</div>';
+        return;
+      }
+      pat_renderHistory(r.data || []);
+    })
+    .withFailureHandler(function(e) {
+      body.innerHTML = '<div style="padding:20px;color:var(--danger);font-size:13px;">' + _e(e.message) + '</div>';
+    })
+    .getPatientOrderHistory(branchId, patientId, false);
+}
+
+function pat_renderHistory(orders) {
+  var body = document.getElementById('patHistoryBody');
+  if (!orders.length) {
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-4);font-size:13px;">'
+      + '<svg width="40" height="40" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="display:block;margin:0 auto 10px;opacity:.3;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/></svg>'
+      + 'No orders for this patient yet.</div>';
+    return;
+  }
+  // Status colour map — keep parity with ord_statusBadge in Orders.html.
+  var statusBg = {
+    DRAFT:'rgba(100,116,139,.1)', OPEN:'rgba(234,179,8,.12)',
+    IN_QUEUE:'rgba(16,168,168,.1)', IN_PROGRESS:'rgba(59,130,246,.1)',
+    FOR_RELEASE:'rgba(168,85,247,.1)', RELEASED:'rgba(0,96,176,.1)',
+    CANCELLED:'rgba(239,68,68,.1)', VOID:'rgba(239,68,68,.1)'
+  };
+  var statusFg = {
+    DRAFT:'#64748b', OPEN:'#ca8a04',
+    IN_QUEUE:'#0d9488', IN_PROGRESS:'#2563eb',
+    FOR_RELEASE:'#7c3aed', RELEASED:'#0060b0',
+    CANCELLED:'#dc2626', VOID:'#dc2626'
+  };
+  var payBg = { UNPAID:'rgba(239,68,68,.1)', PARTIAL:'rgba(234,179,8,.12)', PAID:'rgba(34,197,94,.1)' };
+  var payFg = { UNPAID:'#dc2626', PARTIAL:'#ca8a04', PAID:'#16a34a' };
+
+  var rows = orders.map(function(o) {
+    var sBg = statusBg[o.status] || 'var(--gray-100)';
+    var sFg = statusFg[o.status] || 'var(--text-3)';
+    var pBg = payBg[o.payment_status] || payBg.UNPAID;
+    var pFg = payFg[o.payment_status] || payFg.UNPAID;
+    var amt = '\u20B1' + (Number(o.net_amount)||0).toLocaleString('en-PH', {minimumFractionDigits:2});
+    var dateDisp = o.order_date
+      ? new Date(o.order_date + 'T00:00:00').toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' })
+      : '—';
+    var typeBadge = (o.order_types || '').indexOf('xray') !== -1
+      ? '<span style="font-size:10px;font-weight:800;background:rgba(14,165,233,.1);color:#0ea5e9;padding:1px 6px;border-radius:4px;">🩻 X-RAY</span>'
+      : '<span style="font-size:10px;font-weight:800;background:rgba(16,168,168,.1);color:var(--teal-600);padding:1px 6px;border-radius:4px;">🔬 LAB</span>';
+    var encoded = o.encoded_count + '/' + o.items_count;
+    return '<tr>'
+      + '<td style="padding:8px 10px;font-family:var(--mono);font-size:12px;font-weight:700;color:var(--teal-600);">' + _e(o.order_no) + '</td>'
+      + '<td style="padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text-3);">' + dateDisp + '</td>'
+      + '<td style="padding:8px 10px;">' + typeBadge + '</td>'
+      + '<td style="padding:8px 10px;"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:800;background:' + sBg + ';color:' + sFg + ';">' + _e(o.status) + '</span></td>'
+      + '<td style="padding:8px 10px;font-family:var(--mono);font-size:11px;color:var(--text-2);text-align:center;" title="encoded results / total items">' + encoded + '</td>'
+      + '<td style="padding:8px 10px;font-family:var(--mono);font-size:12px;font-weight:700;text-align:right;">' + amt + '</td>'
+      + '<td style="padding:8px 10px;text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:800;background:' + pBg + ';color:' + pFg + ';">' + _e(o.payment_status) + '</span></td>'
+      + '</tr>';
+  }).join('');
+
+  body.innerHTML = '<div style="overflow-x:auto;">'
+    + '<table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    + '<thead><tr style="background:var(--gray-50);">'
+    +   '<th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--text-3);font-size:11px;">Order #</th>'
+    +   '<th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--text-3);font-size:11px;">Date</th>'
+    +   '<th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--text-3);font-size:11px;">Type</th>'
+    +   '<th style="padding:8px 10px;text-align:left;font-weight:700;color:var(--text-3);font-size:11px;">Status</th>'
+    +   '<th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--text-3);font-size:11px;" title="encoded / total">Encoded</th>'
+    +   '<th style="padding:8px 10px;text-align:right;font-weight:700;color:var(--text-3);font-size:11px;">Amount</th>'
+    +   '<th style="padding:8px 10px;text-align:center;font-weight:700;color:var(--text-3);font-size:11px;">Payment</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table></div>'
+    + '<div style="margin-top:10px;font-size:11px;color:var(--text-4);font-family:var(--mono);">'
+    + orders.length + ' order' + (orders.length === 1 ? '' : 's') + ' \u00B7 open the Lab Results tab for encoded findings'
+    + '</div>';
 }
 
 function pat_loadResults(patientId, branchId) {
