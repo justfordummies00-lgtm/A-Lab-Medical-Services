@@ -291,7 +291,12 @@ function uploadTechSignatureImage(branchId, techId, base64Data, mimeType) {
     while (old.hasNext()) old.next().setTrashed(true);
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
     const file = sigFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // Safe sharing — do not fail upload if Workspace blocks link sharing
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      Logger.log('Could not set ANYONE_WITH_LINK sharing on tech signature image: ' + shareErr.message);
+    }
     const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
     // Save URL to Technologists sheet col O (15)
     const sh = getSS_().getSheetByName('Technologists');
@@ -319,7 +324,12 @@ function uploadBranchSignatureImage(branchId, role, base64Data, mimeType) {
     while (old.hasNext()) old.next().setTrashed(true);
     const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, name);
     const file = sigFolder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    // Safe sharing — do not fail upload if Workspace blocks link sharing
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch (shareErr) {
+      Logger.log('Could not set ANYONE_WITH_LINK sharing on branch signature image: ' + shareErr.message);
+    }
     const url = 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w400';
     // Patch signature_url into the System_Settings JSON for this role
     const settingKey = (role === 'pathologist' ? 'lab_pathologist_' : 'xray_radiologist_') + branchId;
@@ -342,20 +352,53 @@ function uploadBranchSignatureImage(branchId, role, base64Data, mimeType) {
   }
 }
 
-// Returns (or creates) the Signatures subfolder inside the branch root Drive folder
+// Returns (or creates) the Signatures subfolder.
+// Resolution order (matches the working pattern in uploadTemplateHeaderImage / ResultTemplatesCode):
+//   1. Per-branch root folder (drive_folder_config_{branchId} → root_folder_id)
+//   2. Global alab_root_folder_id setting
+//   3. Last-resort: create "A-Lab Signatures" via DriveApp.getFoldersByName (no getRootFolder call)
+// extractDriveFileId_ accepts both raw IDs and full Drive URLs, so admins can paste either form.
 function _getSignaturesFolder_(branchId) {
+  // 1. Per-branch configured root folder
   try {
     const drvCfg = getDriveFolderConfig(branchId);
-    const rootId = drvCfg && drvCfg.root_folder_id ? drvCfg.root_folder_id.trim() : '';
+    let rootId = drvCfg && drvCfg.root_folder_id ? drvCfg.root_folder_id.trim() : '';
+    rootId = extractDriveFileId_(rootId) || rootId;
     if (rootId) {
       const root = DriveApp.getFolderById(rootId);
       const sf   = root.getFoldersByName('Signatures');
       return sf.hasNext() ? sf.next() : root.createFolder('Signatures');
     }
-  } catch(e) { Logger.log('_getSignaturesFolder_ fallback: ' + e.message); }
-  // Fallback to root Drive
-  const fb = DriveApp.getRootFolder().getFoldersByName('A-Lab Signatures');
-  return fb.hasNext() ? fb.next() : DriveApp.getRootFolder().createFolder('A-Lab Signatures');
+  } catch (e) {
+    Logger.log('_getSignaturesFolder_ branch folder error: ' + e.message
+      + '. Script account: ' + getEffectiveUserEmail_());
+  }
+
+  // 2. Global root folder
+  try {
+    const rawGlobalRoot = getSettingValue_('alab_root_folder_id', '');
+    let globalRootId = extractDriveFileId_(rawGlobalRoot) || String(rawGlobalRoot || '').trim();
+    if (globalRootId) {
+      const globalRoot = DriveApp.getFolderById(globalRootId);
+      const sf = globalRoot.getFoldersByName('Signatures');
+      return sf.hasNext() ? sf.next() : globalRoot.createFolder('Signatures');
+    }
+  } catch (e) {
+    Logger.log('_getSignaturesFolder_ global folder error: ' + e.message
+      + '. Script account: ' + getEffectiveUserEmail_());
+  }
+
+  // 3. Last-resort: search the script account's Drive for an existing folder, or create one.
+  // Avoid DriveApp.getRootFolder() which is rejected by some Workspace policies with
+  // "Access denied: DriveApp." even when the script can otherwise access Drive.
+  try {
+    const fb = DriveApp.getFoldersByName('A-Lab Signatures');
+    return fb.hasNext() ? fb.next() : DriveApp.createFolder('A-Lab Signatures');
+  } catch (e) {
+    throw new Error('Cannot access Drive to save the signature. '
+      + 'Please share the configured root folder with the script account: '
+      + getEffectiveUserEmail_() + '. (' + e.message + ')');
+  }
 }
 
 // ── TEMPLATE SETTINGS (per branch) ───────────────────────────
