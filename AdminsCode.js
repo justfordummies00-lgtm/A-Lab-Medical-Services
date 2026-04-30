@@ -419,7 +419,10 @@ function loginStaff_(usernameOrEmail, password) {
     const saLR    = saSh.getLastRow();
     const saArchCol = findArchiveCol_(saSh);
     if (saLR >= 2) {
-      const numCols = Math.max(Math.min(saSh.getLastColumn(), 7), 6);
+      // Read enough cols to cover both the data range AND the is_archived
+      // column — otherwise an archived SA whose archive flag lives past
+      // the data columns would silently slip through the archive check.
+      const numCols = Math.max(Math.min(saSh.getLastColumn(), 7), 6, saArchCol || 0);
       const saRows  = saSh.getRange(2, 1, saLR - 1, numCols).getValues();
       for (const row of saRows) {
         const username  = String(row[0] || '').trim();
@@ -452,7 +455,9 @@ function loginStaff_(usernameOrEmail, password) {
     const lr      = sh.getLastRow();
     const archCol = findArchiveCol_(sh);
     if (lr >= 2) {
-      const numCols = Math.max(Math.min(sh.getLastColumn(), 12), 11);
+      // Same archive-col extension as Super Admins above — don't let
+      // an archived BA log in just because is_archived sits past col 12.
+      const numCols = Math.max(Math.min(sh.getLastColumn(), 12), 11, archCol || 0);
       const rows    = sh.getRange(2, 1, lr - 1, numCols).getValues();
       for (const row of rows) {
         const username  = String(row[2] || '').trim();
