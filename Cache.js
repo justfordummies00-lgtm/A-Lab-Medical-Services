@@ -138,7 +138,8 @@ function cacheBustAll_() {
     'branches', 'departments', 'categories',
     'lab_services', 'packages', 'discounts',
     'doctors', 'technologists', 'admins',
-    'queue_routing', 'system_settings', 'template_settings'
+    'queue_routing', 'system_settings', 'template_settings',
+    'patient_id_types'
   ];
   for (let i = 0; i < all.length; i++) _cacheBumpNs_(all[i]);
 }
