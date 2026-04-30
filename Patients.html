@@ -538,6 +538,10 @@ function pat_doCrossBranchSearch(q) {
     .withSuccessHandler(function(r) {
       if (!r || !r.success) {
         toast('error', (r && r.message) || 'Cross-branch search failed.');
+        // Clear the skeleton so the user can retry — leaving it spinning
+        // forever would look broken.
+        PAT.all = []; PAT.filtered = []; PAT._page = 1;
+        pat_render();
         return;
       }
       // Surface results as the new universe — pat_applyFilter is a no-op
@@ -550,6 +554,8 @@ function pat_doCrossBranchSearch(q) {
     })
     .withFailureHandler(function(e) {
       toast('error', 'Cross-branch search failed: ' + e.message);
+      PAT.all = []; PAT.filtered = []; PAT._page = 1;
+      pat_render();
     })
     .searchPatientsAcrossBranches(PAT.branchId, q);
 }
