@@ -336,7 +336,11 @@ var PAT = {
   // grant from the home branch) render with limited fields and a lock
   // badge instead of full patient detail.
   _crossBranch: false,
-  _xbDebounce:  null
+  _xbDebounce:  null,
+  // Generation counter so an in-flight cross-branch search whose
+  // response arrives after the toggle has been turned off (or
+  // re-typed) is discarded instead of overwriting fresh state.
+  _xbGen:       0
 };
 
 /* ── Pagination helpers ────────────────────────────────────── */
@@ -533,9 +537,17 @@ function pat_onSearchInput() {
 }
 
 function pat_doCrossBranchSearch(q) {
+  // Snapshot the current generation so a stale callback (e.g. user
+  // toggled cross-branch off, or fired a newer query) can detect it
+  // arrived after the world moved on and bail out without mutating
+  // PAT.all.  Without this, an in-flight cross-branch result arriving
+  // *after* a toggle-off could overwrite the local list with foreign
+  // patients and surface Edit/Delete buttons against the wrong branch.
+  var gen = ++PAT._xbGen;
   document.getElementById('patTableBody').innerHTML = pat_skeleton();
   google.script.run
     .withSuccessHandler(function(r) {
+      if (gen !== PAT._xbGen || !PAT._crossBranch) return;  // stale → discard
       if (!r || !r.success) {
         toast('error', (r && r.message) || 'Cross-branch search failed.');
         // Clear the skeleton so the user can retry — leaving it spinning
@@ -553,6 +565,7 @@ function pat_doCrossBranchSearch(q) {
       pat_render();
     })
     .withFailureHandler(function(e) {
+      if (gen !== PAT._xbGen || !PAT._crossBranch) return;  // stale → discard
       toast('error', 'Cross-branch search failed: ' + e.message);
       PAT.all = []; PAT.filtered = []; PAT._page = 1;
       pat_render();
@@ -562,6 +575,13 @@ function pat_doCrossBranchSearch(q) {
 
 function pat_toggleCrossBranch(on) {
   PAT._crossBranch = !!on;
+  // Cancel any pending debounced cross-branch search and bump the
+  // generation so any in-flight searchPatientsAcrossBranches callback
+  // is treated as stale.  Without this, toggling OFF mid-flight could
+  // let foreign-branch patients land in PAT.all *after* _crossBranch
+  // is false, which would render Edit/Delete against the wrong branch.
+  if (PAT._xbDebounce) { clearTimeout(PAT._xbDebounce); PAT._xbDebounce = null; }
+  PAT._xbGen++;
   var hint = document.getElementById('patCrossBranchHint');
   if (hint) hint.style.display = on ? '' : 'none';
   if (on) {
