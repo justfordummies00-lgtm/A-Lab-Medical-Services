@@ -351,14 +351,25 @@ function idt_archiveConfirm() {
     .archivePatientIdType(_idtArchiveId);
 }
 
+var _idtUnarchiveBusy = {};
 function idt_unarchive(id) {
+  // Guard against rapid double-clicks.  Without this the second
+  // click can fire a redundant google.script.run that flashes a
+  // duplicate "ID type restored." toast even though the server
+  // -side operation is idempotent (withLock_-wrapped).
+  if (_idtUnarchiveBusy[id]) return;
+  _idtUnarchiveBusy[id] = true;
   google.script.run
     .withSuccessHandler(function(r) {
+      _idtUnarchiveBusy[id] = false;
       if (!r || !r.success) { toast('error', (r && r.message) || 'Restore failed.'); return; }
       toast('success', 'ID type restored.');
       idt_load();
     })
-    .withFailureHandler(function(e) { toast('error', e.message || 'Connection error.'); })
+    .withFailureHandler(function(e) {
+      _idtUnarchiveBusy[id] = false;
+      toast('error', e.message || 'Connection error.');
+    })
     .unarchivePatientIdType(id);
 }
 </script>

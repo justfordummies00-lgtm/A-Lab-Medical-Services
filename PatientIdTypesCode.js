@@ -124,11 +124,15 @@ function createPatientIdType(payload) {
       const lr = sh.getLastRow();
       const now = new Date();
 
+      // Duplicate name check ignores archived rows so an admin can
+      // recreate a type with the same name as one they archived.
       const nameLc = String(payload.name).trim().toLowerCase();
       if (lr >= 2) {
-        const names = sh.getRange(2, 2, lr - 1, 1).getValues().flat()
-          .map(v => String(v || '').trim().toLowerCase());
-        if (names.includes(nameLc))
+        const dup = sh.getRange(2, 1, lr - 1, 5).getValues().some(r =>
+          r[4] != 1 &&
+          String(r[1] || '').trim().toLowerCase() === nameLc
+        );
+        if (dup)
           return { success: false, message: '"' + payload.name + '" already exists.' };
       }
 
@@ -170,8 +174,15 @@ function updatePatientIdType(payload) {
       const rowIdx = all.findIndex(r => String(r[0]).trim() === String(payload.id_type_id).trim());
       if (rowIdx === -1) return { success: false, message: 'ID type not found.' };
 
+      // Duplicate name check excludes the row being edited and
+      // ignores archived rows so renaming away from / back to a
+      // name freed up by archiving works as expected.
       const nameLc = String(payload.name).trim().toLowerCase();
-      const dup = all.some((r, i) => i !== rowIdx && String(r[1] || '').trim().toLowerCase() === nameLc);
+      const dup = all.some((r, i) =>
+        i !== rowIdx &&
+        r[4] != 1 &&
+        String(r[1] || '').trim().toLowerCase() === nameLc
+      );
       if (dup) return { success: false, message: '"' + payload.name + '" already exists.' };
 
       const existing = all[rowIdx];
