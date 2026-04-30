@@ -272,7 +272,14 @@ function getOrderDetail(branchId, orderId) {
 }
 
 // ── CREATE FULL ORDER (atomic) ───────────────────────────────
+// withLock_ — this is the primary order-creation path called from the
+// wizard.  It allocates order_no via nextOrderNo_ which is a read-
+// modify-write on Settings.order_seq_<year> and also writes to
+// LAB_ORDER / LAB_ORDER_ITEM / PAYMENT.  Without the lock, two
+// concurrent receptionists could allocate the same order number.
+// (The simpler createOrder path was already wrapped — this matches it.)
 function createFullOrder(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId) return { success: false, message: 'Branch ID required.' };
     if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
@@ -463,6 +470,7 @@ function createFullOrder(branchId, payload) {
     Logger.log('createFullOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── CREATE ORDER ─────────────────────────────────────────────
