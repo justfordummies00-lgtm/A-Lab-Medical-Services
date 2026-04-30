@@ -493,6 +493,9 @@ function pat_load() {
     .withSuccessHandler(function(r) {
       if (icon) icon.style.animation = '';
       if (!r.success) {
+        // Silent (background) refresh: keep the user's current table
+        // visible on a transient error.  The next 30s tick will retry.
+        if (silent) return;
         document.getElementById('patTableCard').style.display  = 'none';
         document.getElementById('patEmptyState').style.display = '';
         document.getElementById('patEmptyTitle').textContent   = 'Failed to load patients.';
@@ -508,6 +511,7 @@ function pat_load() {
     })
     .withFailureHandler(function(e) {
       if (icon) icon.style.animation = '';
+      if (silent) return;
       document.getElementById('patTableCard').style.display  = 'none';
       document.getElementById('patEmptyState').style.display = '';
       document.getElementById('patEmptyTitle').textContent   = 'Connection error.';

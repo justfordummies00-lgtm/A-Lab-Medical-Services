@@ -1400,6 +1400,10 @@
       .withSuccessHandler(function (r) {
         if (icon) icon.style.animation = '';
         if (!r.success) {
+          // Silent (background) refresh: keep the user's current table
+          // visible on a transient error instead of wiping it.  The
+          // next 30s tick will retry on its own.
+          if (silent) return;
           document.getElementById('ordTableCard').style.display = 'none';
           document.getElementById('ordEmptyState').style.display = '';
           document.getElementById('ordEmptyIcon').innerHTML = '<svg width="24" height="24" fill="none" stroke="var(--teal-500)" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>';
@@ -1412,6 +1416,7 @@
       })
       .withFailureHandler(function (e) {
         if (icon) icon.style.animation = '';
+        if (silent) return;
         document.getElementById('ordTableCard').style.display = 'none';
         document.getElementById('ordEmptyState').style.display = '';
         document.getElementById('ordEmptyTitle').textContent = 'Connection error.';
