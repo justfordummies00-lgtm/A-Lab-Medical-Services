@@ -365,6 +365,10 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
 
     const q = query.trim().toLowerCase();
 
+    // Resolve discount IDs → display names once for the whole search
+    // (discMap is built from main SS, not branch SSes — cheap to reuse).
+    const discMap = buildDiscountMap_();
+
     // Build access grants map for requesting branch
     const grantsSh = _getAccessGrantsSheet_();
     const grantedPatients = new Set();
@@ -452,6 +456,12 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
               locked:             false,
               philhealth_pin:     String(r[9]||'').trim(),
               discount_ids:       String(r[10]||'').trim(),
+              discounts_display:  String(r[10]||'').trim()
+                ? String(r[10]).trim().split(',').map(did => {
+                    const d = discMap[did.trim()];
+                    return d ? d.discount_name : did.trim();
+                  }).join(', ')
+                : '',
               senior_citizen_id:  String(r[16]||'').trim(),
               pwd_id:             String(r[17]||'').trim(),
               is_4ps:             r[14]==1 ? 1 : 0
