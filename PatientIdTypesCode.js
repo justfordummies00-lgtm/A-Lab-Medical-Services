@@ -256,6 +256,26 @@ function unarchivePatientIdType(idTypeId) {
       const rowIdx = all.findIndex(r => String(r[0]).trim() === String(idTypeId).trim());
       if (rowIdx === -1) return { success: false, message: 'ID type not found.' };
 
+      // Block restore if another ACTIVE row already uses this name.
+      // Without this check, the create/update duplicate-name check
+      // (which now ignores archived rows) could be circumvented:
+      //   1. archive "Solo Parent"  →  archived
+      //   2. create "Solo Parent"   →  succeeds (archive ignored)
+      //   3. unarchive original     →  would silently produce two
+      //      active rows with the same name.
+      const restoreName = String(all[rowIdx][1] || '').trim().toLowerCase();
+      if (restoreName) {
+        const dup = all.some((r, i) =>
+          i !== rowIdx &&
+          r[4] != 1 &&
+          String(r[1] || '').trim().toLowerCase() === restoreName
+        );
+        if (dup) return {
+          success: false,
+          message: 'Another active ID type already uses the name "' + String(all[rowIdx][1]).trim() + '". Rename or archive it first.'
+        };
+      }
+
       sh.getRange(rowIdx + 2, 5).setValue(0);
       sh.getRange(rowIdx + 2, 7).setValue(new Date());
 
