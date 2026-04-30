@@ -1,114 +1,246 @@
 <div id="page-bulkimport" class="page-view" style="display:none;">
   <div class="section-header">
     <div>
-      <div class="section-title" style="font-size:20px;">Bulk Import — Departments & Services</div>
-      <div class="section-sub">Upload your Excel file (.xlsx) to preview and import departments, categories, and services.</div>
+      <div class="section-title" style="font-size:20px;">Import</div>
+      <div class="section-sub">Bulk-upload Excel files to seed catalog data — services, departments, and packages.</div>
     </div>
   </div>
 
-  <!-- Step 1: Upload -->
-  <div id="bi-upload-step" style="margin-top:24px;">
-    <div class="card" style="max-width:560px;padding:32px;">
-      <div id="bi-dropzone"
-        style="border:2px dashed var(--border);border-radius:10px;padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .2s;"
-        onclick="document.getElementById('bi-file-input').click()"
-        ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
-        ondragleave="this.style.borderColor='var(--border)'"
-        ondrop="event.preventDefault();this.style.borderColor='var(--border)';bi_handleFile({files:event.dataTransfer.files})">
-        <div style="font-size:40px;margin-bottom:14px;">📊</div>
-        <div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px;">Click or drag &amp; drop your Excel file</div>
-        <div style="font-size:12px;color:var(--text-3);">Supports <strong>.xlsx</strong> files only &mdash; Sheets starting with <code>Department</code> will be imported</div>
-        <input type="file" id="bi-file-input" accept=".xlsx" style="display:none;" onchange="bi_handleFile(this)">
+  <!-- Tab switcher -->
+  <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin-top:18px;">
+    <button id="bi-tab-services" class="bi-tab-btn bi-tab-active"
+      onclick="bi_switchTab('services')"
+      style="background:none;border:0;padding:12px 22px;font-size:14px;font-weight:600;cursor:pointer;color:var(--text-1);border-bottom:2px solid var(--primary);">
+      🧪 Lab Services / Departments
+    </button>
+    <button id="bi-tab-packages" class="bi-tab-btn"
+      onclick="bi_switchTab('packages')"
+      style="background:none;border:0;padding:12px 22px;font-size:14px;font-weight:600;cursor:pointer;color:var(--text-3);border-bottom:2px solid transparent;">
+      📦 Packages
+    </button>
+  </div>
+
+  <!-- ════════════════════════════════════════════════
+       TAB PANEL: SERVICES (bi_* namespace)
+  ════════════════════════════════════════════════ -->
+  <div id="bi-panel-services">
+    <div style="font-size:13px;color:var(--text-3);margin-top:14px;margin-bottom:6px;">
+      Sheets starting with <code>Department ...</code> will be parsed.
+    </div>
+
+    <!-- Step 1: Upload -->
+    <div id="bi-upload-step" style="margin-top:14px;">
+      <div class="card" style="max-width:560px;padding:32px;">
+        <div id="bi-dropzone"
+          style="border:2px dashed var(--border);border-radius:10px;padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .2s;"
+          onclick="document.getElementById('bi-file-input').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="event.preventDefault();this.style.borderColor='var(--border)';bi_handleFile({files:event.dataTransfer.files})">
+          <div style="font-size:40px;margin-bottom:14px;">📊</div>
+          <div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px;">Click or drag &amp; drop your Excel file</div>
+          <div style="font-size:12px;color:var(--text-3);">Supports <strong>.xlsx</strong> files only &mdash; Sheets starting with <code>Department</code> will be imported</div>
+          <input type="file" id="bi-file-input" accept=".xlsx" style="display:none;" onchange="bi_handleFile(this)">
+        </div>
+        <div id="bi-upload-err" style="display:none;margin-top:14px;background:var(--danger-bg);color:var(--danger);padding:10px 14px;border-radius:6px;border:1px solid rgba(239,68,68,.2);font-size:13px;"></div>
+        <div id="bi-upload-loading" style="display:none;margin-top:14px;font-size:13px;color:var(--text-3);text-align:center;">Parsing file, please wait...</div>
       </div>
-      <div id="bi-upload-err" style="display:none;margin-top:14px;background:var(--danger-bg);color:var(--danger);padding:10px 14px;border-radius:6px;border:1px solid rgba(239,68,68,.2);font-size:13px;"></div>
-      <div id="bi-upload-loading" style="display:none;margin-top:14px;font-size:13px;color:var(--text-3);text-align:center;">Parsing file, please wait...</div>
+    </div>
+
+    <!-- Step 2: Preview -->
+    <div id="bi-preview-step" style="display:none;margin-top:24px;">
+
+      <!-- Summary bar -->
+      <div style="display:flex;align-items:stretch;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div class="card" style="padding:14px 24px;display:flex;gap:28px;align-items:center;flex:1;min-width:300px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Departments</div>
+            <div id="bi-stat-depts" style="font-size:26px;font-weight:700;color:var(--primary);">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Categories</div>
+            <div id="bi-stat-cats" style="font-size:26px;font-weight:700;color:var(--primary);">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">New Services</div>
+            <div id="bi-stat-servs" style="font-size:26px;font-weight:700;color:#10b981;">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Already Exists</div>
+            <div id="bi-stat-exists" style="font-size:26px;font-weight:700;color:#f59e0b;">0</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn" onclick="bi_reset()" style="border:1px solid var(--border);height:40px;">Upload Different File</button>
+          <button class="btn btn-primary" id="bi-confirm-btn" onclick="bi_confirmImport()" style="height:40px;">Confirm &amp; Import</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;color:var(--text-2);align-items:center;">
+        <span style="display:flex;align-items:center;gap:5px;">
+          <span style="width:10px;height:10px;background:#10b981;border-radius:50%;display:inline-block;"></span> New — will be imported
+        </span>
+        <span style="display:flex;align-items:center;gap:5px;">
+          <span style="width:10px;height:10px;background:#f59e0b;border-radius:50%;display:inline-block;"></span> Already exists — will be skipped
+        </span>
+        <span style="margin-left:8px;color:var(--text-3);">Check the <strong>PhilHealth</strong> column for services that are PhilHealth-accredited.</span>
+      </div>
+
+      <!-- Preview Table -->
+      <div class="card" style="padding:0;overflow:hidden;">
+        <div style="overflow-x:auto;max-height:600px;overflow-y:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:var(--bg-2);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2;">
+                <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-3);width:36px;">#</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600;">Department</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600;">Type</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600;">Category</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600;">Service Name</th>
+                <th style="padding:10px 14px;text-align:right;font-weight:600;white-space:nowrap;">Price (PHP)</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600;white-space:nowrap;">PhilHealth ✓</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="bi-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bottom confirm -->
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+        <button class="btn" onclick="bi_reset()" style="border:1px solid var(--border);">Upload Different File</button>
+        <button class="btn btn-primary" onclick="bi_confirmImport()">Confirm &amp; Import</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Result -->
+    <div id="bi-result-step" style="display:none;margin-top:24px;">
+      <div class="card" style="max-width:480px;padding:40px;text-align:center;">
+        <div id="bi-result-icon" style="font-size:52px;margin-bottom:16px;"></div>
+        <div id="bi-result-title" style="font-size:20px;font-weight:700;margin-bottom:8px;"></div>
+        <div id="bi-result-msg" style="font-size:13px;color:var(--text-3);margin-bottom:24px;line-height:1.8;white-space:pre-line;"></div>
+        <button class="btn btn-primary" onclick="bi_reset()">Import Another File</button>
+      </div>
     </div>
   </div>
 
-  <!-- Step 2: Preview -->
-  <div id="bi-preview-step" style="display:none;margin-top:24px;">
+  <!-- ════════════════════════════════════════════════
+       TAB PANEL: PACKAGES (bip_* namespace)
+  ════════════════════════════════════════════════ -->
+  <div id="bi-panel-packages" style="display:none;">
+    <div style="font-size:13px;color:var(--text-3);margin-top:14px;margin-bottom:6px;">
+      Sheets named <code>Packages: ...</code> will be parsed. Columns: Package Name | Included Services | Price.
+    </div>
 
-    <!-- Summary bar -->
-    <div style="display:flex;align-items:stretch;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
-      <div class="card" style="padding:14px 24px;display:flex;gap:28px;align-items:center;flex:1;min-width:300px;">
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Departments</div>
-          <div id="bi-stat-depts" style="font-size:26px;font-weight:700;color:var(--primary);">0</div>
+    <!-- Step 1: Upload -->
+    <div id="bip-upload-step" style="margin-top:14px;">
+      <div class="card" style="max-width:560px;padding:32px;">
+        <div id="bip-dropzone"
+          style="border:2px dashed var(--border);border-radius:10px;padding:48px 24px;text-align:center;cursor:pointer;transition:border-color .2s;"
+          onclick="document.getElementById('bip-file-input').click()"
+          ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+          ondragleave="this.style.borderColor='var(--border)'"
+          ondrop="event.preventDefault();this.style.borderColor='var(--border)';bip_handleFile({files:event.dataTransfer.files})">
+          <div style="font-size:40px;margin-bottom:14px;">📦</div>
+          <div style="font-size:15px;font-weight:600;color:var(--text-1);margin-bottom:6px;">Click or drag &amp; drop your Excel file</div>
+          <div style="font-size:12px;color:var(--text-3);">Supports <strong>.xlsx</strong> files only &mdash; Sheets starting with <code>Packages</code> will be imported</div>
+          <input type="file" id="bip-file-input" accept=".xlsx" style="display:none;" onchange="bip_handleFile(this)">
         </div>
-        <div style="width:1px;background:var(--border);height:36px;"></div>
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Categories</div>
-          <div id="bi-stat-cats" style="font-size:26px;font-weight:700;color:var(--primary);">0</div>
-        </div>
-        <div style="width:1px;background:var(--border);height:36px;"></div>
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">New Services</div>
-          <div id="bi-stat-servs" style="font-size:26px;font-weight:700;color:#10b981;">0</div>
-        </div>
-        <div style="width:1px;background:var(--border);height:36px;"></div>
-        <div style="text-align:center;">
-          <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Already Exists</div>
-          <div id="bi-stat-exists" style="font-size:26px;font-weight:700;color:#f59e0b;">0</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn" onclick="bi_reset()" style="border:1px solid var(--border);height:40px;">Upload Different File</button>
-        <button class="btn btn-primary" id="bi-confirm-btn" onclick="bi_confirmImport()" style="height:40px;">Confirm &amp; Import</button>
+        <div id="bip-upload-err" style="display:none;margin-top:14px;background:var(--danger-bg);color:var(--danger);padding:10px 14px;border-radius:6px;border:1px solid rgba(239,68,68,.2);font-size:13px;"></div>
+        <div id="bip-upload-loading" style="display:none;margin-top:14px;font-size:13px;color:var(--text-3);text-align:center;">Parsing file and matching services, please wait...</div>
       </div>
     </div>
 
-    <!-- Legend -->
-    <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;color:var(--text-2);align-items:center;">
-      <span style="display:flex;align-items:center;gap:5px;">
-        <span style="width:10px;height:10px;background:#10b981;border-radius:50%;display:inline-block;"></span> New — will be imported
-      </span>
-      <span style="display:flex;align-items:center;gap:5px;">
-        <span style="width:10px;height:10px;background:#f59e0b;border-radius:50%;display:inline-block;"></span> Already exists — will be skipped
-      </span>
-      <span style="margin-left:8px;color:var(--text-3);">Check the <strong>PhilHealth</strong> column for services that are PhilHealth-accredited.</span>
-    </div>
+    <!-- Step 2: Preview -->
+    <div id="bip-preview-step" style="display:none;margin-top:24px;">
 
-    <!-- Preview Table -->
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div style="overflow-x:auto;max-height:600px;overflow-y:auto;">
-        <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <thead>
-            <tr style="background:var(--bg-2);border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2;">
-              <th style="padding:10px 12px;text-align:left;font-weight:600;color:var(--text-3);width:36px;">#</th>
-              <th style="padding:10px 14px;text-align:left;font-weight:600;">Department</th>
-              <th style="padding:10px 14px;text-align:center;font-weight:600;">Type</th>
-              <th style="padding:10px 14px;text-align:left;font-weight:600;">Category</th>
-              <th style="padding:10px 14px;text-align:left;font-weight:600;">Service Name</th>
-              <th style="padding:10px 14px;text-align:right;font-weight:600;white-space:nowrap;">Price (PHP)</th>
-              <th style="padding:10px 14px;text-align:center;font-weight:600;white-space:nowrap;">PhilHealth ✓</th>
-              <th style="padding:10px 14px;text-align:center;font-weight:600;">Status</th>
-            </tr>
-          </thead>
-          <tbody id="bi-preview-tbody"></tbody>
-        </table>
+      <!-- Summary bar -->
+      <div style="display:flex;align-items:stretch;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div class="card" style="padding:14px 24px;display:flex;gap:28px;align-items:center;flex:1;min-width:300px;">
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">New Packages</div>
+            <div id="bip-stat-new" style="font-size:26px;font-weight:700;color:#10b981;">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Has Unmatched</div>
+            <div id="bip-stat-warn" style="font-size:26px;font-weight:700;color:#f59e0b;">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Already Exists</div>
+            <div id="bip-stat-exists" style="font-size:26px;font-weight:700;color:var(--text-3);">0</div>
+          </div>
+          <div style="width:1px;background:var(--border);height:36px;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px;">Total Services</div>
+            <div id="bip-stat-servs" style="font-size:26px;font-weight:700;color:var(--primary);">0</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn" onclick="bip_reset()" style="border:1px solid var(--border);height:40px;">Upload Different File</button>
+          <button class="btn btn-primary" id="bip-confirm-btn" onclick="bip_confirmImport()" style="height:40px;">Confirm &amp; Import</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div style="display:flex;gap:16px;margin-bottom:10px;font-size:12px;color:var(--text-2);align-items:center;flex-wrap:wrap;">
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#10b981;border-radius:50%;display:inline-block;"></span> Matched service</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#ef4444;border-radius:50%;display:inline-block;"></span> Not found — will be skipped</span>
+        <span style="display:flex;align-items:center;gap:5px;"><span style="width:10px;height:10px;background:#f59e0b;border-radius:50%;display:inline-block;"></span> Already exists — package skipped</span>
+      </div>
+
+      <!-- Preview Cards -->
+      <div id="bip-preview-list"></div>
+
+      <!-- Bottom confirm -->
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
+        <button class="btn" onclick="bip_reset()" style="border:1px solid var(--border);">Upload Different File</button>
+        <button class="btn btn-primary" onclick="bip_confirmImport()">Confirm &amp; Import</button>
       </div>
     </div>
 
-    <!-- Bottom confirm -->
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;">
-      <button class="btn" onclick="bi_reset()" style="border:1px solid var(--border);">Upload Different File</button>
-      <button class="btn btn-primary" onclick="bi_confirmImport()">Confirm &amp; Import</button>
-    </div>
-  </div>
-
-  <!-- Step 3: Result -->
-  <div id="bi-result-step" style="display:none;margin-top:24px;">
-    <div class="card" style="max-width:480px;padding:40px;text-align:center;">
-      <div id="bi-result-icon" style="font-size:52px;margin-bottom:16px;"></div>
-      <div id="bi-result-title" style="font-size:20px;font-weight:700;margin-bottom:8px;"></div>
-      <div id="bi-result-msg" style="font-size:13px;color:var(--text-3);margin-bottom:24px;line-height:1.8;white-space:pre-line;"></div>
-      <button class="btn btn-primary" onclick="bi_reset()">Import Another File</button>
+    <!-- Step 3: Result -->
+    <div id="bip-result-step" style="display:none;margin-top:24px;">
+      <div class="card" style="max-width:480px;padding:40px;text-align:center;">
+        <div id="bip-result-icon" style="font-size:52px;margin-bottom:16px;"></div>
+        <div id="bip-result-title" style="font-size:20px;font-weight:700;margin-bottom:8px;"></div>
+        <div id="bip-result-msg" style="font-size:13px;color:var(--text-3);margin-bottom:24px;line-height:1.8;white-space:pre-line;"></div>
+        <button class="btn btn-primary" onclick="bip_reset()">Import Another File</button>
+      </div>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
+/* ═══════════════════════════════════════════════════
+   TAB SWITCHER
+═══════════════════════════════════════════════════ */
+function bi_switchTab(tab) {
+  var svcPanel = document.getElementById('bi-panel-services');
+  var pkgPanel = document.getElementById('bi-panel-packages');
+  var svcBtn   = document.getElementById('bi-tab-services');
+  var pkgBtn   = document.getElementById('bi-tab-packages');
+  if (!svcPanel || !pkgPanel) return;
+
+  var showPkg = tab === 'packages';
+  svcPanel.style.display = showPkg ? 'none' : '';
+  pkgPanel.style.display = showPkg ? '' : 'none';
+  svcBtn.style.color        = showPkg ? 'var(--text-3)' : 'var(--text-1)';
+  svcBtn.style.borderBottom = showPkg ? '2px solid transparent' : '2px solid var(--primary)';
+  pkgBtn.style.color        = showPkg ? 'var(--text-1)' : 'var(--text-3)';
+  pkgBtn.style.borderBottom = showPkg ? '2px solid var(--primary)' : '2px solid transparent';
+}
+
+/* ═══════════════════════════════════════════════════
+   SERVICES IMPORT (bi_* namespace)
+═══════════════════════════════════════════════════ */
 var bi_parsedData = [];
 var bi_existingData = { depts: [], cats: [], servs: [] };
 
@@ -372,5 +504,262 @@ function bi_esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/* ═══════════════════════════════════════════════════
+   PACKAGES IMPORT (bip_* namespace)
+═══════════════════════════════════════════════════ */
+var bip_parsedPackages = [];  // [{pkg_name, default_fee, items:[{raw, matched, serv_id, serv_name}], status}]
+var bip_allServices    = [];  // from getServicesForPicker
+
+function bip_showStep(step) {
+  document.getElementById('bip-upload-step').style.display  = step === 'upload'  ? '' : 'none';
+  document.getElementById('bip-preview-step').style.display = step === 'preview' ? '' : 'none';
+  document.getElementById('bip-result-step').style.display  = step === 'result'  ? '' : 'none';
+}
+
+function bip_reset() {
+  bip_parsedPackages = [];
+  var inp = document.getElementById('bip-file-input');
+  if (inp) inp.value = '';
+  document.getElementById('bip-upload-err').style.display = 'none';
+  document.getElementById('bip-upload-loading').style.display = 'none';
+  bip_showStep('upload');
+}
+
+function bip_showErr(msg) {
+  var el = document.getElementById('bip-upload-err');
+  el.textContent = msg;
+  el.style.display = '';
+  document.getElementById('bip-upload-loading').style.display = 'none';
+}
+
+function bip_handleFile(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith('.xlsx')) { bip_showErr('Please upload an .xlsx file.'); return; }
+  document.getElementById('bip-upload-err').style.display = 'none';
+  document.getElementById('bip-upload-loading').style.display = '';
+
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var data = new Uint8Array(e.target.result);
+      var wb = XLSX.read(data, { type: 'array' });
+      var raw = bip_parseWorkbook(wb);
+      if (!raw) return;
+
+      // Fetch all services for matching
+      google.script.run
+        .withSuccessHandler(function(r) {
+          bip_allServices = (r && r.success && r.data) ? r.data : [];
+          bip_parsedPackages = bip_matchServices(raw);
+          bip_checkExistingPackages();
+        })
+        .withFailureHandler(function(err) {
+          bip_showErr('Failed to load services: ' + err.message);
+        })
+        .getServicesForPicker();
+    } catch(err) {
+      bip_showErr('Failed to read file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function bip_parseWorkbook(wb) {
+  var packages = [];
+  wb.SheetNames.forEach(function(name) {
+    if (!/^Packages/i.test(name)) return;
+    var sheet = wb.Sheets[name];
+    var raw   = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+
+    raw.forEach(function(row) {
+      var colA = String(row[0] || '').trim();
+      var colB = String(row[1] || '').trim();
+      var colC = String(row[2] || '').trim();
+      if (!colA || colA.toUpperCase() === 'PACKAGE NAME' || colA.toUpperCase() === 'PACKAGE') return;
+      if (!colB || !colC) return;
+
+      var price = parseFloat(colC.replace(/[^0-9.]/g, ''));
+      if (isNaN(price) || price < 0) return;
+
+      // Split included services by comma
+      var rawItems = colB.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      if (!rawItems.length) return;
+
+      packages.push({ pkg_name: colA, default_fee: price, rawItems: rawItems });
+    });
+  });
+
+  if (!packages.length) {
+    bip_showErr('No packages found. Make sure your Excel has sheets starting with "Packages" and columns: Package Name | Included Services | Price.');
+    return null;
+  }
+  return packages;
+}
+
+function bip_matchService(search) {
+  var s = search.toLowerCase().trim();
+  if (!s) return null;
+
+  // 1. Exact match
+  var m = bip_allServices.find(function(svc) { return svc.serv_name.toLowerCase() === s; });
+  if (m) return m;
+
+  // 2. Service name contains search
+  m = bip_allServices.find(function(svc) { return svc.serv_name.toLowerCase().indexOf(s) !== -1; });
+  if (m) return m;
+
+  // 3. Search contains service name (min 4 chars to avoid "K" → "KUB")
+  if (s.length >= 4) {
+    m = bip_allServices.find(function(svc) {
+      var sn = svc.serv_name.toLowerCase();
+      return sn.length >= 4 && s.indexOf(sn) !== -1;
+    });
+    if (m) return m;
+  }
+
+  return null;
+}
+
+function bip_matchServices(rawPackages) {
+  return rawPackages.map(function(pkg) {
+    var items = pkg.rawItems.map(function(raw) {
+      var matched = bip_matchService(raw);
+      return {
+        raw:       raw,
+        matched:   !!matched,
+        serv_id:   matched ? matched.serv_id   : null,
+        serv_name: matched ? matched.serv_name : null
+      };
+    });
+    return {
+      pkg_name:    pkg.pkg_name,
+      default_fee: pkg.default_fee,
+      items:       items,
+      status:      'new'  // updated after checking existing packages
+    };
+  });
+}
+
+function bip_checkExistingPackages() {
+  google.script.run
+    .withSuccessHandler(function(r) {
+      var existingNames = (r && r.data) ? r.data.map(function(p) { return p.package_name.toLowerCase(); }) : [];
+      bip_parsedPackages.forEach(function(pkg) {
+        if (existingNames.indexOf(pkg.pkg_name.toLowerCase()) !== -1) pkg.status = 'exists';
+      });
+      document.getElementById('bip-upload-loading').style.display = 'none';
+      bip_renderPreview();
+      bip_showStep('preview');
+    })
+    .withFailureHandler(function() {
+      document.getElementById('bip-upload-loading').style.display = 'none';
+      bip_renderPreview();
+      bip_showStep('preview');
+    })
+    .getPackages();
+}
+
+function bip_renderPreview() {
+  var list = document.getElementById('bip-preview-list');
+  list.innerHTML = '';
+
+  var cntNew    = 0;
+  var cntWarn   = 0;
+  var cntExists = 0;
+  var cntServs  = 0;
+
+  bip_parsedPackages.forEach(function(pkg) {
+    var isExists  = pkg.status === 'exists';
+    var unmatched = pkg.items.filter(function(i) { return !i.matched; });
+    var matched   = pkg.items.filter(function(i) { return i.matched; });
+    var hasWarn   = unmatched.length > 0 && !isExists;
+
+    if (isExists)       cntExists++;
+    else if (hasWarn)   { cntNew++; cntWarn++; }
+    else                cntNew++;
+    cntServs += matched.length;
+
+    var statusBadge = isExists
+      ? '<span style="background:#fef3c7;color:#92400e;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">EXISTS — SKIPPED</span>'
+      : hasWarn
+        ? '<span style="background:#fff7ed;color:#c2410c;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">⚠ HAS UNMATCHED</span>'
+        : '<span style="background:#d1fae5;color:#065f46;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;">✓ READY</span>';
+
+    var servicesHtml = pkg.items.map(function(item) {
+      return item.matched
+        ? '<span style="display:inline-flex;align-items:center;gap:4px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;padding:3px 8px;border-radius:6px;font-size:11px;margin:2px;">'
+          + '<span style="color:#16a34a;font-weight:700;">✓</span> ' + bip_esc(item.serv_name) + '</span>'
+        : '<span style="display:inline-flex;align-items:center;gap:4px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:3px 8px;border-radius:6px;font-size:11px;margin:2px;">'
+          + '<span style="font-weight:700;">✗</span> ' + bip_esc(item.raw) + '</span>';
+    }).join('');
+
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText = 'padding:16px 20px;margin-bottom:10px;' + (isExists ? 'opacity:.5;' : '');
+    card.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:12px;flex-wrap:wrap;">' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<div style="font-size:14px;font-weight:600;">' + bip_esc(pkg.pkg_name) + '</div>' +
+          statusBadge +
+        '</div>' +
+        '<div style="font-size:15px;font-weight:700;color:var(--primary);white-space:nowrap;">₱' + pkg.default_fee.toLocaleString('en-PH', { minimumFractionDigits: 2 }) + '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:2px;">' + servicesHtml + '</div>' +
+      (hasWarn ? '<div style="margin-top:8px;font-size:11px;color:#92400e;background:#fff7ed;padding:6px 10px;border-radius:6px;">⚠ ' + unmatched.length + ' unmatched service(s) will be automatically created without a category and added to this package.</div>' : '');
+
+    list.appendChild(card);
+  });
+
+  document.getElementById('bip-stat-new').textContent    = cntNew;
+  document.getElementById('bip-stat-warn').textContent   = cntWarn;
+  document.getElementById('bip-stat-exists').textContent = cntExists;
+  document.getElementById('bip-stat-servs').textContent  = cntServs;
+}
+
+function bip_confirmImport() {
+  var toImport = bip_parsedPackages.filter(function(p) { return p.status !== 'exists'; });
+  if (!toImport.length) { alert('All packages already exist. Nothing to import.'); return; }
+
+  var btns = document.querySelectorAll('#bip-preview-step .btn-primary');
+  btns.forEach(function(b) { b.disabled = true; b.textContent = 'Importing...'; });
+
+  var payload = toImport.map(function(pkg) {
+    var servIds = pkg.items.filter(function(i) { return i.matched; }).map(function(i) { return i.serv_id; });
+    var unmatchedRaw = pkg.items.filter(function(i) { return !i.matched; }).map(function(i) { return i.raw; });
+    return { package_name: pkg.pkg_name, description: '', default_fee: pkg.default_fee, serv_ids: servIds, unmatched: unmatchedRaw };
+  });
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btns.forEach(function(b) { b.disabled = false; b.textContent = 'Confirm & Import'; });
+      if (!res.success) {
+        bip_showResultStep(false, 'Import Failed', res.message);
+      } else {
+        bip_showResultStep(true, 'Import Successful!',
+          'Packages created: ' + res.stats.created +
+          '\nPackages skipped (exists): ' + res.stats.skipped +
+          '\nTotal services linked: ' + res.stats.servs);
+        if (typeof pkg_init === 'function') pkg_init();
+      }
+    })
+    .withFailureHandler(function(err) {
+      btns.forEach(function(b) { b.disabled = false; b.textContent = 'Confirm & Import'; });
+      bip_showResultStep(false, 'Network Error', err.message);
+    })
+    .processBulkImportPackages(payload);
+}
+
+function bip_showResultStep(success, title, msg) {
+  document.getElementById('bip-result-icon').textContent  = success ? '✅' : '❌';
+  document.getElementById('bip-result-title').textContent = title;
+  document.getElementById('bip-result-msg').textContent   = msg;
+  bip_showStep('result');
+}
+
+function bip_esc(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
