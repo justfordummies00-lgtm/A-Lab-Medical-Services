@@ -365,6 +365,10 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
 
     const q = query.trim().toLowerCase();
 
+    // Resolve discount IDs → display names once for the whole search
+    // (discMap is built from main SS, not branch SSes — cheap to reuse).
+    const discMap = buildDiscountMap_();
+
     // Build access grants map for requesting branch
     const grantsSh = _getAccessGrantsSheet_();
     const grantedPatients = new Set();
@@ -388,7 +392,13 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
 
-        const cols    = Math.max(patSh.getLastColumn(), 13);
+        // Read at least 18 cols — the unlocked-row mapping below reads
+        // r[13] (home_branch_id), r[14] (is_4ps), r[16] (senior_citizen_id)
+        // and r[17] (pwd_id).  A branch whose Patients sheet hasn't been
+        // migrated yet may report getLastColumn() == 13, which would
+        // silently produce undefined for all four of those fields.  Match
+        // the pattern in getPatients() which uses 18.
+        const cols    = Math.max(patSh.getLastColumn(), 18);
         const archCol = findArchiveCol_(patSh);
         patSh.getRange(2,1,patSh.getLastRow()-1,cols).getValues()
           .filter(r => r[0])
@@ -407,20 +417,54 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
             const hasGrant     = grantedPatients.has(patId);
             const locked       = !isHomeBranch && !hasGrant;
 
-            results.push({
-              patient_id:   patId,
-              last_name:    lastName,
-              first_name:   firstName,
-              middle_name:  String(r[3]||'').trim(),
-              sex:          String(r[4]||'').trim(),
-              dob:          r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
-              contact:      contact,
-              home_branch:  branchName,
-              home_branch_id: homeBranch,
+            // Locked rows surface only the bare minimum needed to recognise
+            // the patient and request access — no contact, no address, no
+            // discount IDs, no PhilHealth, no demographics beyond name.
+            results.push(locked ? {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        '',
+              sex:                '',
+              dob:                '',
+              contact:            '',
+              email:              '',
+              address:            '',
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
               enrolled_branch_id: branchId,
-              locked:       locked,
-              philhealth_pin: locked ? '' : String(r[9]||'').trim(),
-              discount_ids:   locked ? '' : String(r[10]||'').trim()
+              locked:             true,
+              philhealth_pin:     '',
+              discount_ids:       '',
+              discounts_display:  '',
+              senior_citizen_id:  '',
+              pwd_id:             '',
+              is_4ps:             0
+            } : {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        String(r[3]||'').trim(),
+              sex:                String(r[4]||'').trim(),
+              dob:                r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+              contact:            contact,
+              email:              String(r[7]||'').trim(),
+              address:            String(r[8]||'').trim(),
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
+              enrolled_branch_id: branchId,
+              locked:             false,
+              philhealth_pin:     String(r[9]||'').trim(),
+              discount_ids:       String(r[10]||'').trim(),
+              discounts_display:  String(r[10]||'').trim()
+                ? String(r[10]).trim().split(',').map(did => {
+                    const d = discMap[did.trim()];
+                    return d ? d.discount_name : did.trim();
+                  }).join(', ')
+                : '',
+              senior_citizen_id:  String(r[16]||'').trim(),
+              pwd_id:             String(r[17]||'').trim(),
+              is_4ps:             r[14]==1 ? 1 : 0
             });
           });
       } catch(brErr) {
