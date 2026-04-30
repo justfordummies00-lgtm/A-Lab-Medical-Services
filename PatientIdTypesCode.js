@@ -124,11 +124,15 @@ function createPatientIdType(payload) {
       const lr = sh.getLastRow();
       const now = new Date();
 
+      // Duplicate name check ignores archived rows so an admin can
+      // recreate a type with the same name as one they archived.
       const nameLc = String(payload.name).trim().toLowerCase();
       if (lr >= 2) {
-        const names = sh.getRange(2, 2, lr - 1, 1).getValues().flat()
-          .map(v => String(v || '').trim().toLowerCase());
-        if (names.includes(nameLc))
+        const dup = sh.getRange(2, 1, lr - 1, 5).getValues().some(r =>
+          r[4] != 1 &&
+          String(r[1] || '').trim().toLowerCase() === nameLc
+        );
+        if (dup)
           return { success: false, message: '"' + payload.name + '" already exists.' };
       }
 
@@ -170,8 +174,15 @@ function updatePatientIdType(payload) {
       const rowIdx = all.findIndex(r => String(r[0]).trim() === String(payload.id_type_id).trim());
       if (rowIdx === -1) return { success: false, message: 'ID type not found.' };
 
+      // Duplicate name check excludes the row being edited and
+      // ignores archived rows so renaming away from / back to a
+      // name freed up by archiving works as expected.
       const nameLc = String(payload.name).trim().toLowerCase();
-      const dup = all.some((r, i) => i !== rowIdx && String(r[1] || '').trim().toLowerCase() === nameLc);
+      const dup = all.some((r, i) =>
+        i !== rowIdx &&
+        r[4] != 1 &&
+        String(r[1] || '').trim().toLowerCase() === nameLc
+      );
       if (dup) return { success: false, message: '"' + payload.name + '" already exists.' };
 
       const existing = all[rowIdx];
@@ -244,6 +255,26 @@ function unarchivePatientIdType(idTypeId) {
       const all = sh.getRange(2, 1, lr - 1, 7).getValues();
       const rowIdx = all.findIndex(r => String(r[0]).trim() === String(idTypeId).trim());
       if (rowIdx === -1) return { success: false, message: 'ID type not found.' };
+
+      // Block restore if another ACTIVE row already uses this name.
+      // Without this check, the create/update duplicate-name check
+      // (which now ignores archived rows) could be circumvented:
+      //   1. archive "Solo Parent"  →  archived
+      //   2. create "Solo Parent"   →  succeeds (archive ignored)
+      //   3. unarchive original     →  would silently produce two
+      //      active rows with the same name.
+      const restoreName = String(all[rowIdx][1] || '').trim().toLowerCase();
+      if (restoreName) {
+        const dup = all.some((r, i) =>
+          i !== rowIdx &&
+          r[4] != 1 &&
+          String(r[1] || '').trim().toLowerCase() === restoreName
+        );
+        if (dup) return {
+          success: false,
+          message: 'Another active ID type already uses the name "' + String(all[rowIdx][1]).trim() + '". Rename or archive it first.'
+        };
+      }
 
       sh.getRange(rowIdx + 2, 5).setValue(0);
       sh.getRange(rowIdx + 2, 7).setValue(new Date());

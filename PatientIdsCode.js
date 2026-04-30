@@ -13,16 +13,16 @@
 //  for builtin types so callers can use one helper regardless.
 // ============================================================
 
+// Resolve a branch's Patient_IDs sheet, auto-provisioning the
+// schema on older branches that pre-date this feature so the
+// module doesn't 500.  Reuses getBranchSS_ from PatientsCode.js
+// instead of duplicating the Branches-row → spreadsheet_id
+// resolution logic.
 function _getPatientIdsSheet_(branchId) {
   if (!branchId) throw new Error('Branch ID is required.');
-  const ssId = _getBranchSpreadsheetId_(branchId);
-  if (!ssId) throw new Error('Branch spreadsheet not found for ' + branchId + '.');
-  const bss = openSS_(ssId);
+  const bss = getBranchSS_(branchId);
   let sh = bss.getSheetByName('Patient_IDs');
   if (!sh) {
-    // Auto-provision the sheet on first use so older branches that
-    // pre-date this feature don't 500 the whole module.  This
-    // mirrors what initializeBranchDatabase will create going forward.
     sh = bss.insertSheet('Patient_IDs');
     sh.getRange(1, 1, 1, 7)
       .setValues([['record_id','patient_id','id_type_id','id_value','created_at','updated_at','is_archived']])
@@ -35,16 +35,6 @@ function _getPatientIdsSheet_(branchId) {
   return sh;
 }
 
-// Resolve "Branches" row → spreadsheet_id.  Mirrors the helper
-// pattern used in OrdersCode / PatientsCode.
-function _getBranchSpreadsheetId_(branchId) {
-  const brSh = getSS_().getSheetByName('Branches');
-  if (!brSh || brSh.getLastRow() < 2) return null;
-  const rows = brSh.getRange(2, 1, brSh.getLastRow() - 1, 8).getValues();
-  const hit = rows.find(r => String(r[0] || '').trim() === String(branchId).trim());
-  return hit ? String(hit[7] || '').trim() : null;
-}
-
 // ── READ all extra IDs for one patient ───────────────────────
 // Returns the rows in Patient_IDs PLUS synthesised rows for the
 // three builtins by reading fixed Patients cols.  Frontend can
@@ -55,11 +45,10 @@ function getPatientIds(branchId, patientId) {
       return { success: false, message: 'Branch ID and patient ID are required.' };
 
     // Builtin slots — read them from the Patients sheet cols 10/17/18.
-    const ssId = _getBranchSpreadsheetId_(branchId);
-    if (!ssId) return { success: false, message: 'Branch spreadsheet not found.' };
-    const bss = openSS_(ssId);
-    const patSh = bss.getSheetByName('Patients');
-    if (!patSh) return { success: false, message: 'Patients sheet not found.' };
+    // Routing through getPatientSheet_ also triggers PatientsCode's
+    // schema migration (cols 14–18) so older branches gain the
+    // proper headers on first read.
+    const patSh = getPatientSheet_(branchId);
 
     const cols = Math.max(patSh.getLastColumn(), 18);
     const lr   = patSh.getLastRow();
@@ -147,13 +136,12 @@ function getPatientIdValue_(branchId, patientId, idTypeId) {
   try {
     if (!branchId || !patientId || !idTypeId) return '';
 
-    // Builtin → read fixed Patients col.
+    // Builtin → read fixed Patients col.  getPatientSheet_ also
+    // ensures schema migration has run on older branches.
     const builtinCol = getBuiltinIdTypePatientCol_(idTypeId);
     if (builtinCol) {
-      const ssId = _getBranchSpreadsheetId_(branchId);
-      if (!ssId) return '';
-      const patSh = openSS_(ssId).getSheetByName('Patients');
-      if (!patSh || patSh.getLastRow() < 2) return '';
+      const patSh = getPatientSheet_(branchId);
+      if (patSh.getLastRow() < 2) return '';
       const cols = Math.max(patSh.getLastColumn(), 18);
       const rows = patSh.getRange(2, 1, patSh.getLastRow() - 1, cols).getValues();
       const hit  = rows.find(r => String(r[0] || '').trim() === String(patientId).trim());
@@ -190,13 +178,14 @@ function setPatientId(branchId, patientId, idTypeId, idValue) {
     const value = String(idValue == null ? '' : idValue).trim();
 
     return withLock_(function() {
-      // Builtin → patch the fixed column on Patients.
+      // Builtin → patch the fixed column on Patients.  Routing
+      // through getPatientSheet_ ensures the col-14–18 migration
+      // has run so the value lands under a proper header on older
+      // branches that pre-date the schema additions.
       const builtinCol = getBuiltinIdTypePatientCol_(idTypeId);
       if (builtinCol) {
-        const ssId = _getBranchSpreadsheetId_(branchId);
-        if (!ssId) return { success: false, message: 'Branch spreadsheet not found.' };
-        const patSh = openSS_(ssId).getSheetByName('Patients');
-        if (!patSh || patSh.getLastRow() < 2) return { success: false, message: 'Patient not found.' };
+        const patSh = getPatientSheet_(branchId);
+        if (patSh.getLastRow() < 2) return { success: false, message: 'Patient not found.' };
 
         const ids = patSh.getRange(2, 1, patSh.getLastRow() - 1, 1).getValues().flat().map(v => String(v || '').trim());
         const rowIdx = ids.findIndex(v => v === String(patientId).trim());

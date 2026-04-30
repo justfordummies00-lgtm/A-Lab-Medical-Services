@@ -18,7 +18,7 @@
 //   CACHED  (catalog / config — admin-controlled, rare writes):
 //     branches, departments, categories, lab_services, packages,
 //     discounts, doctors, technologists, admins, queue_routing,
-//     system_settings, template_settings.
+//     system_settings, template_settings, patient_id_types.
 //
 //   NEVER CACHED  (real-time operational data):
 //     orders, patients, lab results, payments, dashboard stats,
