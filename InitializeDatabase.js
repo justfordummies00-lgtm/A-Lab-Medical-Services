@@ -182,6 +182,26 @@ function initializeMainDatabase() {
       '#b45309');
     logs.push((c17 ? '✅ Created' : '⏭ Skipped') + ': Discounts');
 
+    // ── 17b. Patient_ID_Types ─────────────────────────────────
+    // A=id_type_id  B=name  C=description  D=is_builtin
+    // E=is_archived  F=created_at  G=updated_at
+    //
+    // Catalog of identification cards / numbers tracked per
+    // patient.  Three builtins (PhilHealth PIN, Senior Citizen ID,
+    // PWD ID) are seeded below; admins can add more via the
+    // "ID Types" module.  Discounts can later require an entry
+    // here to be present on a patient before the discount can be
+    // applied to an order item.
+    const { created: c17b } = ensureSheet_(ss, 'Patient_ID_Types',
+      ['id_type_id', 'name', 'description', 'is_builtin',
+       'is_archived', 'created_at', 'updated_at'],
+      '#b45309');
+    logs.push((c17b ? '✅ Created' : '⏭ Skipped') + ': Patient_ID_Types');
+    if (typeof seedBuiltinIdTypes_ === 'function') {
+      const seeded = seedBuiltinIdTypes_();
+      if (seeded > 0) logs.push('   → Seeded ' + seeded + ' builtin ID type(s).');
+    }
+
     // ── 18. Doctors ───────────────────────────────────────────
     // A=doctor_id  B=last_name  C=first_name  D=middle_name  E=suffix
     // F=specialization  G=prc_no  H=ptr_no  I=username  J=email
@@ -313,6 +333,20 @@ function initializeBranchDatabase(spreadsheetId) {
       ['patient_id', 'requesting_branch_id', 'home_branch_id',
        'granted_by', 'granted_at', 'is_active']);
     logs.push((ci6 ? '✅ Created' : '⏭ Skipped') + ': Patient_Access_Grants');
+
+    // ── 6b. Patient_IDs ───────────────────────────────────────
+    // A=record_id  B=patient_id  C=id_type_id  D=id_value
+    // E=created_at  F=updated_at  G=is_archived
+    //
+    // Stores per-patient IDs for non-builtin ID types defined on
+    // the global Patient_ID_Types sheet (Solo Parent ID, employee
+    // ID, etc.).  The three builtin types — PhilHealth PIN,
+    // Senior Citizen ID, PWD ID — keep using the existing fixed
+    // Patients columns 10/17/18 so legacy reads stay intact.
+    const { created: ci6b } = ensureSheet_(ss, 'Patient_IDs',
+      ['record_id', 'patient_id', 'id_type_id', 'id_value',
+       'created_at', 'updated_at', 'is_archived']);
+    logs.push((ci6b ? '✅ Created' : '⏭ Skipped') + ': Patient_IDs');
 
     // ── 7. PHILHEALTH_CLAIMS ──────────────────────────────────
     // A=claim_id  B=order_id  C=patient_id  D=philhealth_pin
