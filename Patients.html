@@ -471,14 +471,22 @@ function pat_onBranchChange() {
 /* ── Load ── */
 function pat_load() {
   if (!PAT.branchId) return;
-  var silent = !!(typeof APP !== 'undefined' && APP.silentRefresh);
+  // A refresh is silent whenever there is already a rendered table on
+  // screen — regardless of whether it was triggered by the polling
+  // timer, the manual Refresh button, or a SWR navigation.  Only the
+  // very first load (PAT.all empty) shows the skeleton + "Loading…".
+  // The polling timer also force-sets APP.silentRefresh=true as a
+  // belt-and-suspenders.
+  var hasRenderedData = !!(PAT.all && PAT.all.length);
+  var silent = hasRenderedData ||
+               !!(typeof APP !== 'undefined' && APP.silentRefresh);
   var icon = document.getElementById('patRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
   if (!silent) document.getElementById('patSubtitle').textContent = 'Loading…';
 
-  // Show skeleton rows immediately — table stays visible.  Skip
-  // the skeleton on silent (background) refreshes so the user
-  // doesn't see the table flicker every 30 seconds.
+  // Show skeleton rows immediately — table stays visible.  Skip the
+  // skeleton on silent refreshes so the user never sees the table
+  // flicker once their data is on screen.
   if (!silent) {
     document.getElementById('patEmptyState').style.display = 'none';
     document.getElementById('patSearchBar').style.display  = '';
