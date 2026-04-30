@@ -429,6 +429,28 @@ var Live = (function(){
 // separate function so navigateTo() and the polling timer share
 // the exact same routing logic.
 function _runLoader(page) {
+  // ── SILENT-REFRESH FAST PATH ──────────────────────────────
+  // The 30s polling timer reuses this dispatcher, but the
+  // module-level *_init() loaders below RESET page-local state
+  // (branch picker, filters, search box, current page index).
+  // That wiped the SA's branch selection on Orders / Patients
+  // when the polling timer fired mid-task.
+  //
+  // For silent refreshes we instead call the re-fetch-only loader
+  // that preserves user state.  We only do this if the page is
+  // already initialized (branchId set); otherwise we fall through
+  // to the *_init() path so the picker still gets built.
+  if (APP.silentRefresh) {
+    if (page === 'orders' && typeof ORD !== 'undefined' && ORD.branchId &&
+        typeof ord_load === 'function') return ord_load();
+    if (page === 'patients' && typeof PAT !== 'undefined' && PAT.branchId &&
+        typeof pat_load === 'function') {
+      // If the user is mid cross-branch search, don't second-guess
+      // them — leave the current results on screen.
+      if (PAT._crossBranch) return;
+      return pat_load();
+    }
+  }
   if (page === 'dashboard'         && typeof dash_init     === 'function') return dash_init();
   if (page === 'tech-dashboard'    && typeof techdash_load === 'function') return techdash_load();
   if (page === 'tech-queue'        && typeof techdash_load === 'function') return techdash_load();
