@@ -1367,16 +1367,21 @@
   /* ── Load ── */
   function ord_load() {
     if (!ORD.branchId) return;
+    var silent = !!(typeof APP !== 'undefined' && APP.silentRefresh);
     var icon = document.getElementById('ordRefreshIcon');
     if (icon) icon.style.animation = 'spin .8s linear infinite';
-    document.getElementById('ordSubtitle').textContent = 'Loading…';
+    if (!silent) document.getElementById('ordSubtitle').textContent = 'Loading…';
 
-    // Show skeleton immediately — table + filter bar visible right away
-    document.getElementById('ordEmptyState').style.display = 'none';
-    document.getElementById('ordFilterBar').style.display = 'flex';
-    document.getElementById('ordStatCards').style.display = 'grid';
-    document.getElementById('ordTableCard').style.display = '';
-    document.getElementById('ordTableBody').innerHTML = ord_skeleton();
+    // Show skeleton immediately — table + filter bar visible right away.
+    // Skip the skeleton on silent (background) refreshes so the user
+    // doesn't see the table flicker every 30 seconds.
+    if (!silent) {
+      document.getElementById('ordEmptyState').style.display = 'none';
+      document.getElementById('ordFilterBar').style.display = 'flex';
+      document.getElementById('ordStatCards').style.display = 'grid';
+      document.getElementById('ordTableCard').style.display = '';
+      document.getElementById('ordTableBody').innerHTML = ord_skeleton();
+    }
 
     // Pre-load services so ord_getServiceTypes() works even before wizard is opened.
     if (ORD.branchId && !ORD.wiz.services.length) {

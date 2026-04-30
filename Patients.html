@@ -471,18 +471,23 @@ function pat_onBranchChange() {
 /* ── Load ── */
 function pat_load() {
   if (!PAT.branchId) return;
+  var silent = !!(typeof APP !== 'undefined' && APP.silentRefresh);
   var icon = document.getElementById('patRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('patSubtitle').textContent = 'Loading…';
+  if (!silent) document.getElementById('patSubtitle').textContent = 'Loading…';
 
-  // Show skeleton rows immediately — table stays visible
-  document.getElementById('patEmptyState').style.display = 'none';
-  document.getElementById('patSearchBar').style.display  = '';
-  document.getElementById('patTableCard').style.display  = '';
-  document.getElementById('patTableBody').innerHTML      = pat_skeleton();
+  // Show skeleton rows immediately — table stays visible.  Skip
+  // the skeleton on silent (background) refreshes so the user
+  // doesn't see the table flicker every 30 seconds.
+  if (!silent) {
+    document.getElementById('patEmptyState').style.display = 'none';
+    document.getElementById('patSearchBar').style.display  = '';
+    document.getElementById('patTableCard').style.display  = '';
+    document.getElementById('patTableBody').innerHTML      = pat_skeleton();
 
-  PAT.all      = [];
-  PAT.filtered = [];
+    PAT.all      = [];
+    PAT.filtered = [];
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {
