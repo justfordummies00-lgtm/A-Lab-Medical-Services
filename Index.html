@@ -315,6 +315,12 @@
           </svg>
           <span class="sb-nav-label">Discounts</span>
         </a>
+        <a class="sb-nav-item" data-page="patient-id-types" data-label="ID Types" onclick="navigateTo('patient-id-types')">
+          <svg class="sb-nav-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5M10 6a2 2 0 104 0M10 6a2 2 0 014 0m-7 8h2m-2 4h2m4-4h4m-4 4h4"/>
+          </svg>
+          <span class="sb-nav-label">ID Types</span>
+        </a>
       </div>
 
       <div class="sb-section" id="sbSectionPeople">
@@ -450,6 +456,7 @@
       <?!= include('LabServices') ?>
       <?!= include('Packages') ?>
       <?!= include('Discounts') ?>
+      <?!= include('PatientIdTypes') ?>
       <?!= include('Doctors') ?>
       <?!= include('Technologists') ?>
       <?!= include('Patients') ?>

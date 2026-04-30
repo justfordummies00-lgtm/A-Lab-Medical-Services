@@ -27,6 +27,7 @@ var PAGES = {
   'lab-services':       { label: 'Lab Services',     path: 'A-Lab / Catalog / Lab Services' },
   'packages':           { label: 'Packages',         path: 'A-Lab / Catalog / Packages' },
   'discounts':          { label: 'Discounts',        path: 'A-Lab / Catalog / Discounts' },
+  'patient-id-types':   { label: 'ID Types',         path: 'A-Lab / Catalog / Patient ID Types' },
   'doctors':            { label: 'Doctors',          path: 'A-Lab / People / Doctors' },
   'patients':           { label: 'Patients',         path: 'A-Lab / People / Patients' },
   'technologists':      { label: 'Technologists',    path: 'A-Lab / People / Technologists' },
@@ -458,6 +459,7 @@ function _runLoader(page) {
   if (page === 'lab-services'  && typeof LS   !== 'undefined') return ls_load();
   if (page === 'packages'      && typeof PKG  !== 'undefined') return pkg_load();
   if (page === 'discounts'     && typeof DISC !== 'undefined') return disc_load();
+  if (page === 'patient-id-types' && typeof IDT !== 'undefined') return idt_load();
   if (page === 'doctors'       && typeof DR   !== 'undefined') return dr_load();
   if (page === 'technologists' && typeof TECH !== 'undefined') return tech_load();
   if (page === 'orders'        && typeof ORD  !== 'undefined') return ord_init();
