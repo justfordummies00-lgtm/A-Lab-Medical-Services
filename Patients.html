@@ -1024,10 +1024,14 @@ function pat_openView(id) {
       + '</div>';
   }).join('');
 
-  // Actions — edit/delete only for tech
+  // Actions — edit/delete only for tech, AND only when not in cross-branch
+  // search mode.  In cross-branch mode the patient may live in another
+  // branch's Patients sheet, so updatePatient/deletePatient(PAT.branchId,
+  // patient_id) would fail or worse, on a patient-ID collision modify the
+  // wrong record.  Mirrors the same suppression in the table row above.
   var actDiv = document.getElementById('patViewActions');
   actDiv.innerHTML = '';
-  if (PAT.isTech) {
+  if (PAT.isTech && !PAT._crossBranch) {
     var delBtn = document.createElement('button');
     delBtn.className = 'btn btn-danger btn-sm';
     delBtn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg> Delete';
