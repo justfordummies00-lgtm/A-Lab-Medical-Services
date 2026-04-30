@@ -27,7 +27,7 @@ var PAGES = {
   'lab-services':       { label: 'Lab Services',     path: 'A-Lab / Catalog / Lab Services' },
   'packages':           { label: 'Packages',         path: 'A-Lab / Catalog / Packages' },
   'discounts':          { label: 'Discounts',        path: 'A-Lab / Catalog / Discounts' },
-  'patient-id-types':   { label: 'ID Types',         path: 'A-Lab / Catalog / Patient ID Types' },
+  'patient-id-types':   { label: 'ID Types',         path: 'A-Lab / Settings / ID Types' },
   'doctors':            { label: 'Doctors',          path: 'A-Lab / People / Doctors' },
   'patients':           { label: 'Patients',         path: 'A-Lab / People / Patients' },
   'technologists':      { label: 'Technologists',    path: 'A-Lab / People / Technologists' },
@@ -36,8 +36,7 @@ var PAGES = {
   'admins':             { label: 'Admins',           path: 'A-Lab / Admin / Admins' },
   'configurations':     { label: 'Configurations',   path: 'A-Lab / Admin / Configurations' },
   'branch-settings':    { label: 'Branch Settings',  path: 'A-Lab / Branch Settings' },
-  'bulkimport':         { label: 'Bulk Import',          path: 'A-Lab / Admin / Bulk Import' },
-  'bulkimport-packages':{ label: 'Bulk Import Packages', path: 'A-Lab / Admin / Bulk Import Packages' },
+  'bulkimport':         { label: 'Import',               path: 'A-Lab / Tools / Import' },
 };
 
 /* ─── VIEW SWITCHER ─── */
@@ -429,6 +428,28 @@ var Live = (function(){
 // separate function so navigateTo() and the polling timer share
 // the exact same routing logic.
 function _runLoader(page) {
+  // ── SILENT-REFRESH FAST PATH ──────────────────────────────
+  // The 30s polling timer reuses this dispatcher, but the
+  // module-level *_init() loaders below RESET page-local state
+  // (branch picker, filters, search box, current page index).
+  // That wiped the SA's branch selection on Orders / Patients
+  // when the polling timer fired mid-task.
+  //
+  // For silent refreshes we instead call the re-fetch-only loader
+  // that preserves user state.  We only do this if the page is
+  // already initialized (branchId set); otherwise we fall through
+  // to the *_init() path so the picker still gets built.
+  if (APP.silentRefresh) {
+    if (page === 'orders' && typeof ORD !== 'undefined' && ORD.branchId &&
+        typeof ord_load === 'function') return ord_load();
+    if (page === 'patients' && typeof PAT !== 'undefined' && PAT.branchId &&
+        typeof pat_load === 'function') {
+      // If the user is mid cross-branch search, don't second-guess
+      // them — leave the current results on screen.
+      if (PAT._crossBranch) return;
+      return pat_load();
+    }
+  }
   if (page === 'dashboard'         && typeof dash_init     === 'function') return dash_init();
   if (page === 'tech-dashboard'    && typeof techdash_load === 'function') return techdash_load();
   if (page === 'tech-queue'        && typeof techdash_load === 'function') return techdash_load();
