@@ -58,6 +58,10 @@ function ensureBssTemplateCol_(sh) {
 // Returns all services with category name joined
 // Also returns categories list for the modal dropdown
 function getLabServices() {
+  return withCache_('lab_services', 'sa', 60, _getLabServices_);
+}
+
+function _getLabServices_() {
   try {
     const ss = getSS_();
     const sh = getLabServSheet_();
@@ -123,6 +127,10 @@ function getLabServices() {
 // ── READ (Branch Admin view) ──────────────────────────────────
 // Returns services grouped by category with branch overrides applied
 function getBranchServStatus(branchId) {
+  return withCache_('lab_services', 'branch:' + (branchId || ''), 60, function() { return _getBranchServStatus_(branchId); });
+}
+
+function _getBranchServStatus_(branchId) {
   try {
     if (!branchId) return { success: false, message: 'Branch ID required.' };
 
@@ -274,6 +282,7 @@ function createLabService(payload) {
     // Propagate to all branches (default active)
     propagateServToAllBranches_(servId);
 
+    cacheBust_('lab_services');
     writeAuditLog_('SERV_CREATE', { serv_id: servId, serv_name: payload.serv_name });
     Logger.log('createLabService: ' + servId);
     return { success: true, serv_id: servId };
@@ -336,6 +345,7 @@ function updateLabService(payload) {
       (payload.template_url || '').trim()
     ]]);
 
+    cacheBust_('lab_services');
     writeAuditLog_('SERV_UPDATE', { serv_id: payload.serv_id, serv_name: payload.serv_name });
     Logger.log('updateLabService: ' + payload.serv_id);
     return { success: true };
@@ -357,6 +367,7 @@ function setLabServiceTemplate(servId, templateUrl) {
     if (rowIdx === -1) return { success: false, message: 'Service not found.' };
     sh.getRange(rowIdx + 2, 12).setValue((templateUrl || '').trim());
     sh.getRange(rowIdx + 2, 9).setValue(new Date());
+    cacheBust_('lab_services');
     return { success: true };
   } catch (err) {
     Logger.log('setLabServiceTemplate ERROR: ' + err.message);
@@ -380,6 +391,7 @@ function saveLabServiceTemplates(templates) {
         sh.getRange(rowIdx + 2, 9).setValue(now);
       }
     });
+    cacheBust_('lab_services');
     return { success: true };
   } catch (err) {
     Logger.log('saveLabServiceTemplates ERROR: ' + err.message);
@@ -405,6 +417,7 @@ function deleteLabService(servId) {
     // Clean up branch status rows for this service
     cleanServBranchStatus_(servId);
 
+    cacheBust_('lab_services');
     writeAuditLog_('SERV_DELETE', { serv_id: servId });
     Logger.log('deleteLabService: ' + servId);
     return { success: true };
@@ -434,11 +447,13 @@ function setBranchServStatus(branchId, servId, isActive, templateUrl) {
           } else {
              sh.getRange(i + 2, 3, 1, 2).setValues([[isActive == 1 ? 1 : 0, now]]);
           }
+          cacheBust_('lab_services');
           return { success: true };
         }
       }
     }
     sh.appendRow([branchId, servId, isActive == 1 ? 1 : 0, now, isUpdatingUrl ? (templateUrl||'').trim() : '']);
+    cacheBust_('lab_services');
     return { success: true };
   } catch (err) {
     Logger.log('setBranchServStatus ERROR: ' + err.message);
@@ -547,6 +562,7 @@ function setServiceConsultation(servId, isConsult) {
       if (String(rows[i][0]).trim() === servId) {
         // Col 11 is is_consultation
         sh.getRange(i + 2, 11).setValue(isConsult == 1 ? 1 : 0);
+        cacheBust_('lab_services');
         writeAuditLog_('SERV_CONSULTATION_UPDATE', { serv_id: servId, is_consultation: isConsult });
         return { success: true };
       }

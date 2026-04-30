@@ -12,10 +12,10 @@
 // ============================================================
 
 // ── SS CACHE (per execution) ─────────────────────────────────
-const _patSSCache_ = {};
-
+// Branch SS opens are memoized through openSS_() in Cache.js so
+// any module that touches the same branch SS in this invocation
+// hits the same cached SpreadsheetApp object.
 function getBranchSS_(branchId) {
-  if (_patSSCache_[branchId]) return _patSSCache_[branchId];
   const brSh = getSS_().getSheetByName('Branches');
   if (!brSh) throw new Error('"Branches" sheet not found.');
   const lr   = brSh.getLastRow();
@@ -25,9 +25,7 @@ function getBranchSS_(branchId) {
   if (!row) throw new Error('Branch "' + branchId + '" not found.');
   const ssId = String(row[7] || '').trim();
   if (!ssId) throw new Error('Branch "' + branchId + '" has no spreadsheet configured.');
-  const ss = SpreadsheetApp.openById(ssId);
-  _patSSCache_[branchId] = ss;
-  return ss;
+  return openSS_(ssId);
 }
 
 // ── GET OR CREATE Patients sheet in branch SS ────────────────
@@ -89,7 +87,7 @@ function buildDiscountMap_() {
 }
 
 // ── READ ─────────────────────────────────────────────────────
-function getPatients(branchId) {
+function getPatients(branchId, includeArchived) {
   try {
     if (!branchId) return { success: false, message: 'Branch ID is required.' };
 
@@ -99,10 +97,12 @@ function getPatients(branchId) {
     // Batch read patients + discounts from main SS simultaneously
     // discMap built from main SS (not branch SS — already in memory)
     const discMap = buildDiscountMap_();
+    const archCol = findArchiveCol_(sh);
 
     const data = lr < 2 ? [] :
       sh.getRange(2, 1, lr-1, Math.max(sh.getLastColumn(), 18)).getValues()
         .filter(r => r[0] && String(r[0]).trim())
+        .filter(r => includeArchived || !isArchivedRow_(r, archCol))
         .map(r => {
           const discIds  = String(r[10]||'').trim();
           const discDisp = discIds
@@ -147,6 +147,7 @@ function getPatients(branchId) {
 
 // ── CREATE ────────────────────────────────────────────────────
 function createPatient(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId)           return { success: false, message: 'Branch ID is required.' };
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
@@ -202,10 +203,12 @@ function createPatient(branchId, payload) {
     Logger.log('createPatient ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ────────────────────────────────────────────────────
 function updatePatient(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId)            return { success: false, message: 'Branch ID is required.' };
     if (!payload.patient_id)  return { success: false, message: 'Patient ID is required.' };
@@ -256,30 +259,49 @@ function updatePatient(branchId, payload) {
     Logger.log('updatePatient ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── DELETE ────────────────────────────────────────────────────
-function deletePatient(branchId, patientId) {
-  try {
-    if (!branchId)  return { success: false, message: 'Branch ID is required.' };
-    if (!patientId) return { success: false, message: 'Patient ID is required.' };
-
-    const sh  = getPatientSheet_(branchId);
-    const lr  = sh.getLastRow();
-    if (lr < 2) return { success: false, message: 'Patient not found.' };
-
-    const ids    = sh.getRange(2, 1, lr-1, 1).getValues().flat().map(String);
-    const rowIdx = ids.findIndex(id => id.trim() === patientId.trim());
-    if (rowIdx === -1) return { success: false, message: 'Patient not found.' };
-
-    sh.deleteRow(rowIdx + 2);
-    writeAuditLog_('PATIENT_DELETE', { branch_id: branchId, patient_id: patientId });
-    return { success: true };
-  } catch(e) {
-    Logger.log('deletePatient ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+// Soft-delete: archives the patient instead of removing the row.
+// All historical orders / payments / results stay intact and remain
+// queryable from the home branch's records.  See Archive.gs.
+function archivePatient(branchId, patientId) {
+  return withLock_(function() {
+    try {
+      if (!branchId)  return { success: false, message: 'Branch ID is required.' };
+      if (!patientId) return { success: false, message: 'Patient ID is required.' };
+      const sh = getPatientSheet_(branchId);
+      const r  = setArchiveFlag_(sh, patientId, true);
+      if (!r.ok) return { success: false, message: 'Patient not found.' };
+      writeAuditLog_('PATIENT_ARCHIVE', { branch_id: branchId, patient_id: patientId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('archivePatient ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
+
+function unarchivePatient(branchId, patientId) {
+  return withLock_(function() {
+    try {
+      if (!branchId)  return { success: false, message: 'Branch ID is required.' };
+      if (!patientId) return { success: false, message: 'Patient ID is required.' };
+      const sh = getPatientSheet_(branchId);
+      const r  = setArchiveFlag_(sh, patientId, false);
+      if (!r.ok) return { success: false, message: 'Patient not found.' };
+      writeAuditLog_('PATIENT_UNARCHIVE', { branch_id: branchId, patient_id: patientId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('unarchivePatient ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
+}
+
+// Backward-compat — old UIs still call deletePatient; route to archive.
+function deletePatient(branchId, patientId) { return archivePatient(branchId, patientId); }
 
 // ── GET BRANCHES FOR PATIENT VIEW (SA/BA selector) ───────────
 function getBranchesForPatientView(branchIds) {
@@ -343,6 +365,10 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
 
     const q = query.trim().toLowerCase();
 
+    // Resolve discount IDs → display names once for the whole search
+    // (discMap is built from main SS, not branch SSes — cheap to reuse).
+    const discMap = buildDiscountMap_();
+
     // Build access grants map for requesting branch
     const grantsSh = _getAccessGrantsSheet_();
     const grantedPatients = new Set();
@@ -362,13 +388,21 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
       const ssId       = String(br[7]).trim();
 
       try {
-        const bss  = SpreadsheetApp.openById(ssId);
+        const bss  = openSS_(ssId);
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
 
-        const cols = Math.max(patSh.getLastColumn(), 13);
+        // Read at least 18 cols — the unlocked-row mapping below reads
+        // r[13] (home_branch_id), r[14] (is_4ps), r[16] (senior_citizen_id)
+        // and r[17] (pwd_id).  A branch whose Patients sheet hasn't been
+        // migrated yet may report getLastColumn() == 13, which would
+        // silently produce undefined for all four of those fields.  Match
+        // the pattern in getPatients() which uses 18.
+        const cols    = Math.max(patSh.getLastColumn(), 18);
+        const archCol = findArchiveCol_(patSh);
         patSh.getRange(2,1,patSh.getLastRow()-1,cols).getValues()
           .filter(r => r[0])
+          .filter(r => !isArchivedRow_(r, archCol))
           .forEach(r => {
             const patId    = String(r[0]).trim();
             const lastName = String(r[1]||'').trim();
@@ -383,20 +417,54 @@ function searchPatientsAcrossBranches(requestingBranchId, query) {
             const hasGrant     = grantedPatients.has(patId);
             const locked       = !isHomeBranch && !hasGrant;
 
-            results.push({
-              patient_id:   patId,
-              last_name:    lastName,
-              first_name:   firstName,
-              middle_name:  String(r[3]||'').trim(),
-              sex:          String(r[4]||'').trim(),
-              dob:          r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
-              contact:      contact,
-              home_branch:  branchName,
-              home_branch_id: homeBranch,
+            // Locked rows surface only the bare minimum needed to recognise
+            // the patient and request access — no contact, no address, no
+            // discount IDs, no PhilHealth, no demographics beyond name.
+            results.push(locked ? {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        '',
+              sex:                '',
+              dob:                '',
+              contact:            '',
+              email:              '',
+              address:            '',
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
               enrolled_branch_id: branchId,
-              locked:       locked,
-              philhealth_pin: locked ? '' : String(r[9]||'').trim(),
-              discount_ids:   locked ? '' : String(r[10]||'').trim()
+              locked:             true,
+              philhealth_pin:     '',
+              discount_ids:       '',
+              discounts_display:  '',
+              senior_citizen_id:  '',
+              pwd_id:             '',
+              is_4ps:             0
+            } : {
+              patient_id:         patId,
+              last_name:          lastName,
+              first_name:         firstName,
+              middle_name:        String(r[3]||'').trim(),
+              sex:                String(r[4]||'').trim(),
+              dob:                r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+              contact:            contact,
+              email:              String(r[7]||'').trim(),
+              address:            String(r[8]||'').trim(),
+              home_branch:        branchName,
+              home_branch_id:     homeBranch,
+              enrolled_branch_id: branchId,
+              locked:             false,
+              philhealth_pin:     String(r[9]||'').trim(),
+              discount_ids:       String(r[10]||'').trim(),
+              discounts_display:  String(r[10]||'').trim()
+                ? String(r[10]).trim().split(',').map(did => {
+                    const d = discMap[did.trim()];
+                    return d ? d.discount_name : did.trim();
+                  }).join(', ')
+                : '',
+              senior_citizen_id:  String(r[16]||'').trim(),
+              pwd_id:             String(r[17]||'').trim(),
+              is_4ps:             r[14]==1 ? 1 : 0
             });
           });
       } catch(brErr) {
@@ -547,7 +615,7 @@ function get4psCensus(branchIds) {
     const results = [];
     for (const br of allBranches) {
       try {
-        const bss   = SpreadsheetApp.openById(br.ss_id);
+        const bss   = openSS_(br.ss_id);
         const patSh = bss.getSheetByName('Patients');
         if (!patSh || patSh.getLastRow() < 2) continue;
         const cols = Math.max(patSh.getLastColumn(), 15);

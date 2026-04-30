@@ -57,6 +57,10 @@ function buildCatMap_() {
 
 // ── READ: All services for picker — single getSS_ call ────────
 function getServicesForPicker() {
+  return withCache_('lab_services', 'picker', 60, _getServicesForPicker_);
+}
+
+function _getServicesForPicker_() {
   try {
     const ss     = getSS_();
     const sh     = ss.getSheetByName('Lab_Services');
@@ -88,6 +92,10 @@ function getServicesForPicker() {
 
 // ── READ: Global packages (SA view) ─────────────────────────
 function getPackages() {
+  return withCache_('packages', 'sa', 60, _getPackages_);
+}
+
+function _getPackages_() {
   try {
     const sh      = getPkgSheet_();
     const itemsSh = getPkgItemsSheet_();
@@ -136,6 +144,10 @@ function getPackages() {
 
 // ── READ: Branch view (global + branch packages with status) ─
 function getBranchPackages(branchId) {
+  return withCache_('packages', 'branch:' + (branchId || ''), 60, function() { return _getBranchPackages_(branchId); });
+}
+
+function _getBranchPackages_(branchId) {
   try {
     if (!branchId) return { success: false, message: 'Branch ID required.' };
 
@@ -267,6 +279,7 @@ function createPackage(payload) {
     // Propagate to all branches
     propagatePkgToAllBranches_(pkgId);
 
+    cacheBust_('packages');
     writeAuditLog_('PKG_CREATE', { package_id: pkgId, package_name: payload.package_name });
     Logger.log('createPackage: ' + pkgId);
     return { success: true, package_id: pkgId };
@@ -329,6 +342,7 @@ function updatePackage(payload) {
       itemsSh.appendRow([itemId, payload.package_id.trim(), sid.trim(), now]);
     });
 
+    cacheBust_('packages');
     writeAuditLog_('PKG_UPDATE', { package_id: payload.package_id, package_name: payload.package_name });
     return { success: true };
   } catch(e) {
@@ -372,6 +386,7 @@ function deletePackage(pkgId) {
       toDeleteS.sort((a,b) => b-a).forEach(row => stSh.deleteRow(row));
     }
 
+    cacheBust_('packages');
     writeAuditLog_('PKG_DELETE', { package_id: pkgId });
     return { success: true };
   } catch(e) {
@@ -410,6 +425,7 @@ function createBranchPackage(payload) {
       itemsSh.appendRow([itemId, bpId, sid.trim(), now]);
     });
 
+    cacheBust_('packages');
     writeAuditLog_('BPKG_CREATE', { bp_id: bpId, branch_id: payload.branch_id, package_name: payload.package_name });
     Logger.log('createBranchPackage: ' + bpId);
     return { success: true, package_id: bpId };
@@ -474,6 +490,7 @@ function updateBranchPackage(payload) {
       itemsSh.appendRow([itemId, payload.package_id.trim(), sid.trim(), now]);
     });
 
+    cacheBust_('packages');
     writeAuditLog_('BPKG_UPDATE', { bp_id: payload.package_id, package_name: payload.package_name });
     return { success: true };
   } catch(e) {
@@ -507,6 +524,7 @@ function deleteBranchPackage(bpId) {
       toDelete.sort((a,b) => b-a).forEach(row => itemsSh.deleteRow(row));
     }
 
+    cacheBust_('packages');
     writeAuditLog_('BPKG_DELETE', { bp_id: bpId });
     return { success: true };
   } catch(e) {
@@ -526,11 +544,13 @@ function setBranchPkgStatus(branchId, pkgId, isActive) {
       for (let i = 0; i < rows.length; i++) {
         if (String(rows[i][0]).trim() === branchId && String(rows[i][1]).trim() === pkgId) {
           sh.getRange(i+2, 3, 1, 2).setValues([[isActive==1?1:0, now]]);
+          cacheBust_('packages');
           return { success: true };
         }
       }
     }
     sh.appendRow([branchId, pkgId, isActive==1?1:0, now]);
+    cacheBust_('packages');
     return { success: true };
   } catch(e) {
     return { success: false, message: e.message };
@@ -547,6 +567,7 @@ function setBranchOwnPkgStatus(bpId, isActive) {
     const rowIdx = ids.findIndex(id => id.trim() === bpId.trim());
     if (rowIdx === -1) return { success: false, message: 'Package not found.' };
     sh.getRange(rowIdx + 2, 6).setValue(isActive==1?1:0);
+    cacheBust_('packages');
     return { success: true };
   } catch(e) {
     return { success: false, message: e.message };

@@ -19,44 +19,46 @@ function getBranchSheet_() {
 //   Pass empty string or omit for Super Admin (returns all).
 //   Pass branch_ids from session for Branch Admin (filtered).
 function getBranches(branchIds) {
-  try {
-    const sh      = getBranchSheet_();
-    const lastRow = sh.getLastRow();
-    if (lastRow < 2) return { success: true, data: [] };
+  const filter = (branchIds || '').toString().trim();
+  return withCache_('branches', filter || 'all', 60, function() {
+    try {
+      const sh      = getBranchSheet_();
+      const lastRow = sh.getLastRow();
+      if (lastRow < 2) return { success: true, data: [] };
 
-    // Parse allowed IDs — empty = Super Admin = all
-    const allowed = (branchIds || '').toString().trim();
-    const allowedSet = allowed
-      ? new Set(allowed.split(',').map(id => id.trim()).filter(Boolean))
-      : null;  // null = no filter
+      // Parse allowed IDs — empty = Super Admin = all
+      const allowedSet = filter
+        ? new Set(filter.split(',').map(id => id.trim()).filter(Boolean))
+        : null;  // null = no filter
 
-    const rows = sh.getRange(2, 1, lastRow - 1, 11).getValues();
-    const data = rows
-      .filter(r => {
-        if (!r[0] || !String(r[0]).trim()) return false;
-        if (allowedSet && !allowedSet.has(String(r[0]).trim())) return false;
-        return true;
-      })
-      .map(r => ({
-        branch_id:       String(r[0]  || '').trim(),
-        branch_name:     String(r[1]  || '').trim(),
-        branch_code:     String(r[2]  || '').trim(),
-        address:         String(r[3]  || '').trim(),
-        contact:         String(r[4]  || '').trim(),
-        email:           String(r[5]  || '').trim(),
-        status:          String(r[6]  || 'Active').trim(),
-        spreadsheet_id:  String(r[7]  || '').trim(),
-        spreadsheet_url: String(r[8]  || '').trim(),
-        created_at:      r[9]  ? new Date(r[9]).toISOString()  : '',
-        updated_at:      r[10] ? new Date(r[10]).toISOString() : ''
-      }));
+      const rows = sh.getRange(2, 1, lastRow - 1, 11).getValues();
+      const data = rows
+        .filter(r => {
+          if (!r[0] || !String(r[0]).trim()) return false;
+          if (allowedSet && !allowedSet.has(String(r[0]).trim())) return false;
+          return true;
+        })
+        .map(r => ({
+          branch_id:       String(r[0]  || '').trim(),
+          branch_name:     String(r[1]  || '').trim(),
+          branch_code:     String(r[2]  || '').trim(),
+          address:         String(r[3]  || '').trim(),
+          contact:         String(r[4]  || '').trim(),
+          email:           String(r[5]  || '').trim(),
+          status:          String(r[6]  || 'Active').trim(),
+          spreadsheet_id:  String(r[7]  || '').trim(),
+          spreadsheet_url: String(r[8]  || '').trim(),
+          created_at:      r[9]  ? new Date(r[9]).toISOString()  : '',
+          updated_at:      r[10] ? new Date(r[10]).toISOString() : ''
+        }));
 
-    Logger.log('getBranches: ' + data.length + ' records' + (allowedSet ? ' (filtered)' : ''));
-    return { success: true, data };
-  } catch (err) {
-    Logger.log('getBranches ERROR: ' + err.message);
-    return { success: false, message: err.message };
-  }
+      Logger.log('getBranches: ' + data.length + ' records' + (allowedSet ? ' (filtered)' : ''));
+      return { success: true, data };
+    } catch (err) {
+      Logger.log('getBranches ERROR: ' + err.message);
+      return { success: false, message: err.message };
+    }
+  });
 }
 
 // ── CREATE ───────────────────────────────────────────────────
@@ -135,6 +137,7 @@ function createBranch(payload) {
       now   // updated_at
     ]);
 
+    cacheBust_('branches');
     writeAuditLog_('BRANCH_CREATE', {
       branch_id:       branchId,
       branch_name:     payload.branch_name,
@@ -279,7 +282,7 @@ function updateBranch(payload) {
     // Update Branch Info sheet in branch SS (non-blocking best effort)
     if (ssId) {
       try {
-        const infoSheet = SpreadsheetApp.openById(ssId).getSheetByName('Branch Info');
+        const infoSheet = openSS_(ssId).getSheetByName('Branch Info');
         if (infoSheet) {
           infoSheet.getRange(1, 2, 6, 1).setValues([
             [payload.branch_name.trim()],
@@ -293,6 +296,7 @@ function updateBranch(payload) {
       } catch(e) { Logger.log('updateBranch: branch SS info update failed: ' + e.message); }
     }
 
+    cacheBust_('branches');
     writeAuditLog_('BRANCH_UPDATE', { branch_id: payload.branch_id, branch_name: payload.branch_name });
     Logger.log('updateBranch: updated ' + payload.branch_id);
     return { success: true };
@@ -319,6 +323,7 @@ function deleteBranch(branchId) {
 
     sh.deleteRow(rowIdx + 2);
 
+    cacheBust_('branches');
     writeAuditLog_('BRANCH_DELETE', { branch_id: branchId });
     Logger.log('deleteBranch: deleted ' + branchId);
     return { success: true };

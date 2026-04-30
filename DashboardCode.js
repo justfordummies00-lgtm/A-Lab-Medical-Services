@@ -60,7 +60,7 @@ function getDashboardStats(branchId) {
 
     branchIds.forEach(br => {
       try {
-        const bss    = SpreadsheetApp.openById(br.ssId);
+        const bss    = openSS_(br.ssId);
         const ordSh  = bss.getSheetByName('LAB_ORDER');
         const paySh  = bss.getSheetByName('PAYMENT');
         const patSh  = bss.getSheetByName('Patients');
@@ -116,11 +116,15 @@ function getDashboardStats(branchId) {
     const recent5 = recentOrders.slice(0, 5);
 
     // ── Audit Logs (Recent Activity) ──
+    // Audit log is appended at the bottom (newest = last row), so we
+    // read the tail of the sheet and reverse to get newest-first.
     const recentActivity = [];
     const auditSh = ss.getSheetByName('Audit Logs');
     if (auditSh && auditSh.getLastRow() >= 2) {
-      // Rows are inserted at the top (row 2), so they are naturally descending. Read max 100 to filter.
-      const auditRows = auditSh.getRange(2, 1, Math.min(auditSh.getLastRow() - 1, 100), 5).getValues();
+      const auditLR  = auditSh.getLastRow();
+      const tailSize = Math.min(auditLR - 1, 100);
+      const startRow = auditLR - tailSize + 1;
+      const auditRows = auditSh.getRange(startRow, 1, tailSize, 5).getValues().reverse();
       for (const r of auditRows) {
         if (!r[0]) continue;
         let payload = {};
@@ -185,7 +189,7 @@ function getTechDashboardStats(branchId, techRole) {
     const br   = rows.find(r => String(r[0]).trim() === branchId);
     if (!br || !br[7]) return { success: false, message: 'Branch SS not configured.' };
 
-    const bss   = SpreadsheetApp.openById(String(br[7]).trim());
+    const bss   = openSS_(String(br[7]).trim());
     const ordSh = bss.getSheetByName('LAB_ORDER');
     const patSh = bss.getSheetByName('Patients');
 

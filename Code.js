@@ -55,7 +55,9 @@ function loginDoctor_(usernameOrEmail, password) {
     const lr = sh.getLastRow();
     if (lr < 2) return { success: false, message: 'Invalid username/email or password.' };
 
-    const rows = sh.getRange(2, 1, lr-1, 15).getValues();
+    const archCol = findArchiveCol_(sh);
+    const cols    = Math.max(15, sh.getLastColumn());
+    const rows    = sh.getRange(2, 1, lr-1, cols).getValues();
     for (const row of rows) {
       const doctorId  = String(row[0]  || '').trim();
       const lastName  = String(row[1]  || '').trim();
@@ -67,6 +69,7 @@ function loginDoctor_(usernameOrEmail, password) {
       const photoUrl  = String(row[14] || '').trim();
 
       if (!doctorId) continue;
+      if (isArchivedRow_(row, archCol)) continue;
       if ((username.toLowerCase() === input || email === input) && rowPass === pass) {
         Logger.log('loginDoctor_: match — ' + username);
         return {
@@ -103,7 +106,9 @@ function loginTechnologist_(usernameOrEmail, password) {
     const lr = sh.getLastRow();
     if (lr < 2) return { success: false, message: 'Invalid username/email or password.' };
 
-    const rows = sh.getRange(2, 1, lr-1, 13).getValues();
+    const archCol = findArchiveCol_(sh);
+    const cols    = Math.max(13, sh.getLastColumn());
+    const rows    = sh.getRange(2, 1, lr-1, cols).getValues();
     for (const row of rows) {
       const techId    = String(row[0]  || '').trim();
       const lastName  = String(row[1]  || '').trim();
@@ -116,6 +121,7 @@ function loginTechnologist_(usernameOrEmail, password) {
       const photoUrl  = String(row[12] || '').trim();
 
       if (!techId) continue;
+      if (isArchivedRow_(row, archCol)) continue;
       if ((username.toLowerCase() === input || email === input) && rowPass === pass) {
         Logger.log('loginTechnologist_: match — ' + username + ' role=' + techRole);
         // role col J stores actual sub-role:
@@ -530,6 +536,11 @@ function updateMyPassword(payload) {
 }
 
 // ── AUDIT LOG ────────────────────────────────────────────────
+// Append-only at the bottom of the sheet.  insertRowBefore(2)
+// was O(n) and made every CRUD slower as the log grew; appendRow
+// is O(1) and preserves the natural chronological order.  The UI
+// reads the tail of the sheet (most recent rows) when displaying
+// "recent activity".
 function writeAuditLog_(action, payloadData) {
   try {
     const sheet = getSS_().getSheetByName('Audit Logs');
@@ -537,23 +548,18 @@ function writeAuditLog_(action, payloadData) {
     if (sheet.getLastRow() === 0) {
       sheet.getRange(1,1,1,5).setValues([['DateTime','Action','User','Role','PayloadJSON']]);
     }
-    // Batch write — single setValues instead of 5 separate setValue calls
-    sheet.insertRowBefore(2);
-    sheet.getRange(2,1,1,5).setValues([[
+    sheet.appendRow([
       new Date(), action,
       Session.getActiveUser().getEmail(),
       'System',
       JSON.stringify(payloadData)
-    ]]);
+    ]);
   } catch (err) {
     Logger.log('writeAuditLog_ ERROR: ' + err.message);
   }
 }
 
-// ── ORDERS (stub — move to OrdersCode.gs when ready) ────────
-function getOrders()     { return { success: true, data: [] }; }
-function createOrder(p)  { return { success: false, message: 'Not yet implemented.' }; }
-function updateOrder(p)  { return { success: false, message: 'Not yet implemented.' }; }
+// Order CRUD lives in OrdersCode.js — stubs intentionally removed.
 
 // ── RECEPTIONIST DASHBOARD STATS ─────────────────────────────
 // Proxy to getTechDashboardStats (defined in DashboardCode.gs)
@@ -571,7 +577,7 @@ function getReceptionistDashboardStats(branchId) {
     const rows = brSh.getRange(2,1,brSh.getLastRow()-1,8).getValues();
     const br   = rows.find(r => String(r[0]).trim() === branchId);
     if (!br || !br[7]) return { success: false, message: 'Branch SS not configured.' };
-    const bss   = SpreadsheetApp.openById(String(br[7]).trim());
+    const bss   = openSS_(String(br[7]).trim());
     const ordSh = bss.getSheetByName('LAB_ORDER');
     const patSh = bss.getSheetByName('Patients');
     const patCount = patSh && patSh.getLastRow() >= 2 ? patSh.getLastRow() - 1 : 0;
@@ -598,4 +604,3 @@ function getReceptionistDashboardStats(branchId) {
     return { success: false, message: e.message };
   }
 }
-function deleteOrder(id) { return { success: false, message: 'Not yet implemented.' }; }

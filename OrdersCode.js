@@ -3,19 +3,17 @@
 // ============================================================
 
 // ── SS CACHE (per execution) ─────────────────────────────────
-const _ssCache_ = {};
-
+// Branch ID → SS lookup is memoized via openSS_() in Cache.js,
+// so multiple modules touching the same branch SS within one
+// google.script.run invocation only open it once.
 function getOrderSS_(branchId) {
-  if (_ssCache_[branchId]) return _ssCache_[branchId];
   const sh = getSS_().getSheetByName('Branches');
   if (!sh) throw new Error('Branches sheet not found.');
   const lr = sh.getLastRow();
   const rows = sh.getRange(2, 1, lr - 1, 8).getValues();
   const row = rows.find(r => String(r[0]).trim() === branchId);
   if (!row || !row[7]) throw new Error('Branch spreadsheet not configured for: ' + branchId);
-  const ss = SpreadsheetApp.openById(String(row[7]).trim());
-  _ssCache_[branchId] = ss;
-  return ss;
+  return openSS_(String(row[7]).trim());
 }
 
 function getOrCreateSheet_(ss, name, headers) {
@@ -274,7 +272,14 @@ function getOrderDetail(branchId, orderId) {
 }
 
 // ── CREATE FULL ORDER (atomic) ───────────────────────────────
+// withLock_ — this is the primary order-creation path called from the
+// wizard.  It allocates order_no via nextOrderNo_ which is a read-
+// modify-write on Settings.order_seq_<year> and also writes to
+// LAB_ORDER / LAB_ORDER_ITEM / PAYMENT.  Without the lock, two
+// concurrent receptionists could allocate the same order number.
+// (The simpler createOrder path was already wrapped — this matches it.)
 function createFullOrder(branchId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId) return { success: false, message: 'Branch ID required.' };
     if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
@@ -465,36 +470,45 @@ function createFullOrder(branchId, payload) {
     Logger.log('createFullOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── CREATE ORDER ─────────────────────────────────────────────
 function createOrder(branchId, payload) {
-  try {
-    if (!branchId) return { success: false, message: 'Branch ID required.' };
-    if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
-    const ss = getOrderSS_(branchId);
-    const sh = getOrCreateSheet_(ss, 'LAB_ORDER',
-      ['order_id', 'order_no', 'branch_id', 'patient_id', 'doctor_id',
-        'order_date', 'status', 'created_by', 'created_at', 'updated_at', 'notes']);
-    const now = new Date();
-    const branchCode = getBranchCode_(branchId);
-    const orderId = 'ORD-' + Math.random().toString(16).substr(2, 8).toUpperCase();
-    const orderNo = nextOrderNo_(ss, branchCode, now.getFullYear());
-    sh.appendRow([orderId, orderNo, branchId, payload.patient_id.trim(),
-      (payload.doctor_id || '').trim(), now, 'DRAFT',
-      payload.created_by || '', now, now, (payload.notes || '').trim()]);
-    writeBranchAudit_(ss, payload.created_by || '', 'CREATE_ORDER', 'ORDER', orderId, null, { order_no: orderNo });
-    writeAuditLog_('ORDER_CREATE', { branch_id: branchId, order_id: orderId, order_no: orderNo });
-    Logger.log('createOrder: ' + orderId + ' / ' + orderNo);
-    return { success: true, order_id: orderId, order_no: orderNo };
-  } catch (e) {
-    Logger.log('createOrder ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+  // withLock_ — allocating order_no via nextOrderNo_ is read-modify-write
+  // on Settings.order_seq_<year>.  Without this two concurrent receptionists
+  // could allocate the same order number.
+  return withLock_(function() {
+    try {
+      if (!branchId) return { success: false, message: 'Branch ID required.' };
+      if (!payload.patient_id) return { success: false, message: 'Patient is required.' };
+      const ss = getOrderSS_(branchId);
+      const sh = getOrCreateSheet_(ss, 'LAB_ORDER',
+        ['order_id', 'order_no', 'branch_id', 'patient_id', 'doctor_id',
+          'order_date', 'status', 'created_by', 'created_at', 'updated_at', 'notes']);
+      const now = new Date();
+      const branchCode = getBranchCode_(branchId);
+      const orderId = 'ORD-' + Math.random().toString(16).substr(2, 8).toUpperCase();
+      const orderNo = nextOrderNo_(ss, branchCode, now.getFullYear());
+      sh.appendRow([orderId, orderNo, branchId, payload.patient_id.trim(),
+        (payload.doctor_id || '').trim(), now, 'DRAFT',
+        payload.created_by || '', now, now, (payload.notes || '').trim()]);
+      writeBranchAudit_(ss, payload.created_by || '', 'CREATE_ORDER', 'ORDER', orderId, null, { order_no: orderNo });
+      writeAuditLog_('ORDER_CREATE', { branch_id: branchId, order_id: orderId, order_no: orderNo });
+      Logger.log('createOrder: ' + orderId + ' / ' + orderNo);
+      return { success: true, order_id: orderId, order_no: orderNo };
+    } catch (e) {
+      Logger.log('createOrder ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
 
 // ── SAVE ORDER ITEMS ─────────────────────────────────────────
+// withLock_ — deletes-then-appends rows; without lock a concurrent
+// reader/writer can see partial state or skip rows.
 function saveOrderItems(branchId, orderId, items) {
+  return withLock_(function() {
   try {
     if (!branchId || !orderId) return { success: false, message: 'Branch and Order ID required.' };
     const ss = getOrderSS_(branchId);
@@ -525,6 +539,7 @@ function saveOrderItems(branchId, orderId, items) {
     Logger.log('saveOrderItems ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── CONFIRM ORDER ────────────────────────────────────────────
@@ -533,7 +548,10 @@ function confirmOrder(branchId, orderId, techId) {
 }
 
 // ── POST PAYMENT ─────────────────────────────────────────────
+// withLock_ — reads order balance then writes payment_status; without
+// the lock a partial / overpayment race could mark an order PAID twice.
 function postPayment(branchId, orderId, payload) {
+  return withLock_(function() {
   try {
     if (!branchId || !orderId) return { success: false, message: 'Branch and Order ID required.' };
     if (!payload.amount || Number(payload.amount) <= 0) return { success: false, message: 'Valid amount required.' };
@@ -561,6 +579,7 @@ function postPayment(branchId, orderId, payload) {
     Logger.log('postPayment ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ORDER STATUS ───────────────────────────────────────
@@ -569,6 +588,7 @@ function updateOrderStatus(branchId, orderId, newStatus, techId) {
 }
 
 function updateOrderStatus_(branchId, orderId, newStatus, actorId, action) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const sh = ss.getSheetByName('LAB_ORDER');
@@ -590,12 +610,14 @@ function updateOrderStatus_(branchId, orderId, newStatus, actorId, action) {
     Logger.log('updateOrderStatus_ ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── ARCHIVE ORDER ─────────────────────────────────────────────
 // Sets status to ARCHIVED. Archived orders are hidden from tech dashboards.
 // Only allowed on DRAFT or OPEN orders (not yet in progress).
 function archiveOrder(branchId, orderId, actorId) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const sh = ss.getSheetByName('LAB_ORDER');
@@ -620,10 +642,12 @@ function archiveOrder(branchId, orderId, actorId) {
     Logger.log('archiveOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ORDER (edit patient, doctor, notes, date) ──────────
 function updateOrder(branchId, orderId, payload, actorId) {
+  return withLock_(function() {
   try {
     const ss = getOrderSS_(branchId);
     const mainSS = getSS_();
@@ -681,6 +705,7 @@ function updateOrder(branchId, orderId, payload, actorId) {
     Logger.log('updateOrder ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 function updateOrderTimestamp_(ss, orderId) {
@@ -900,6 +925,85 @@ function getPatientResults(branchId, patientId) {
     return { success: true, data };
   } catch (e) {
     Logger.log('getPatientResults ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ── GET PATIENT ORDER HISTORY ───────────────────────────────
+// Returns ALL orders for the patient (any status, including those with no
+// encoded results yet) with summary info — order_no, status, date, total,
+// payment_status, item count, encoded count.  Used by the Patient profile
+// modal's "Order History" tab so techs can see the full timeline of every
+// test the patient has been through at this branch.
+//
+// Archived orders are excluded by default; pass includeArchived=true to
+// include them.
+function getPatientOrderHistory(branchId, patientId, includeArchived) {
+  try {
+    if (!branchId || !patientId) return { success: false, message: 'Missing params.' };
+    const ss     = getOrderSS_(branchId);
+    const ordSh  = ss.getSheetByName('LAB_ORDER');
+    const itemSh = ss.getSheetByName('LAB_ORDER_ITEM');
+    const rSh    = ss.getSheetByName('RESULT_ITEMS');
+
+    if (!ordSh || ordSh.getLastRow() < 2) return { success: true, data: [] };
+
+    const ordCols = Math.max(ordSh.getLastColumn(), 24);
+    const orders = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, ordCols).getValues()
+      .filter(r => r[0] && String(r[3]).trim() === patientId)
+      .filter(r => includeArchived || String(r[6]).trim() !== 'ARCHIVED')
+      .map(r => ({
+        order_id:       String(r[0]).trim(),
+        order_no:       String(r[1]).trim(),
+        order_date:     r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+        status:         String(r[6]).trim(),
+        doctor_name:    String(r[12] || '').trim(),
+        net_amount:     Number(r[14]) || 0,
+        order_types:    String(r[21] || 'lab').trim() || 'lab',
+        payment_status: String(r[23] || 'UNPAID').trim() || 'UNPAID',
+        items_count:    0,
+        encoded_count:  0
+      }));
+
+    if (!orders.length) return { success: true, data: [] };
+
+    // Item counts and per-item result counts in one pass each.
+    const orderIds = new Set(orders.map(o => o.order_id));
+    const orderMap = {};
+    orders.forEach(o => { orderMap[o.order_id] = o; });
+
+    const itemMap = {};
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      const itemCols = Math.max(itemSh.getLastColumn(), 16);
+      itemSh.getRange(2, 1, itemSh.getLastRow() - 1, itemCols).getValues()
+        .filter(r => r[0] && orderIds.has(String(r[1]).trim()))
+        .forEach(r => {
+          const itemId = String(r[0]).trim();
+          const ordId  = String(r[1]).trim();
+          itemMap[itemId] = ordId;
+          if (orderMap[ordId]) orderMap[ordId].items_count++;
+        });
+    }
+    if (rSh && rSh.getLastRow() >= 2) {
+      const rCols = Math.max(rSh.getLastColumn(), 14);
+      const seen = {};
+      rSh.getRange(2, 1, rSh.getLastRow() - 1, rCols).getValues()
+        .filter(r => r[0] && itemMap[String(r[2]).trim()])
+        .forEach(r => {
+          const itemId = String(r[2]).trim();
+          if (seen[itemId]) return;
+          seen[itemId] = true;
+          const ordId = itemMap[itemId];
+          if (orderMap[ordId]) orderMap[ordId].encoded_count++;
+        });
+    }
+
+    orders.sort((a, b) => b.order_date.localeCompare(a.order_date) ||
+                          b.order_no.localeCompare(a.order_no));
+    Logger.log('getPatientOrderHistory: ' + branchId + ' / ' + patientId + ' → ' + orders.length);
+    return { success: true, data: orders };
+  } catch (e) {
+    Logger.log('getPatientOrderHistory ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
 }

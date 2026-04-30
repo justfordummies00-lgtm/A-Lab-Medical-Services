@@ -27,6 +27,7 @@ var PAGES = {
   'lab-services':       { label: 'Lab Services',     path: 'A-Lab / Catalog / Lab Services' },
   'packages':           { label: 'Packages',         path: 'A-Lab / Catalog / Packages' },
   'discounts':          { label: 'Discounts',        path: 'A-Lab / Catalog / Discounts' },
+  'patient-id-types':   { label: 'ID Types',         path: 'A-Lab / Catalog / Patient ID Types' },
   'doctors':            { label: 'Doctors',          path: 'A-Lab / People / Doctors' },
   'patients':           { label: 'Patients',         path: 'A-Lab / People / Patients' },
   'technologists':      { label: 'Technologists',    path: 'A-Lab / People / Technologists' },
@@ -284,6 +285,7 @@ function mountApp(silent) {
 /* ─── LOGOUT ─── */
 function doLogout() {
   APP.user = null;
+  try { if (typeof Live !== 'undefined') Live.stop(); } catch(e) {}
   try { sessionStorage.removeItem('alab_user'); } catch(e) {}
 
   // Reset all module states so they re-fetch fresh on next login
@@ -315,6 +317,155 @@ function doLogout() {
   toast('info', 'Signed out successfully.');
 }
 
+/* ───────────────────────────────────────────────────────────
+ * LIVE — stale-while-revalidate + silent background polling
+ *
+ * Two distinct UX wins:
+ *
+ *   (1) SWR (instant page revisit)
+ *       When the user clicks back to a sidebar page they
+ *       loaded recently, we DON'T re-show the loading
+ *       spinner — they see the previously-rendered table /
+ *       cards / dashboard immediately, then the loader runs
+ *       in the background and quietly replaces the data.
+ *
+ *   (2) Silent polling (auto-refresh)
+ *       For real-time pages (orders, patients, results,
+ *       receptionist/tech/liaison dashboards), the active
+ *       page silently re-fetches its data every 30s so a
+ *       receptionist's new order shows up in a tech's queue
+ *       without anyone clicking "Refresh".
+ *
+ * Guard rails (so we never overwrite a form a user is filling):
+ *   • Polling pauses when document.hidden = true.
+ *   • Polling pauses when ANY modal is open
+ *     (.modal.show OR .modal[style*="display: flex"]).
+ *   • Polling only runs for the currently-active page.
+ *   • Loaders that respect APP.silentRefresh skip showing
+ *     "Loading…" UI; loaders that don't will only flicker
+ *     briefly, which is harmless.
+ * ─────────────────────────────────────────────────────────── */
+APP.silentRefresh = false;
+
+var Live = (function(){
+  var POLL_MS = 30000;          // refresh every 30s on live pages
+  var SWR_MS  = 8000;           // re-render cached DOM if loaded < 8s ago
+  var lastLoaded = {};          // page → timestamp of last load
+  var pollTimer  = null;
+  var currentPage = null;
+
+  // Pages that should auto-refresh in the background.
+  // Catalog pages (branches, departments, doctors, etc.) are
+  // not in this list — they cache server-side and bust on writes.
+  var LIVE_PAGES = {
+    'dashboard':            true,
+    'tech-dashboard':       true,
+    'tech-queue':           true,
+    'rec-dashboard':        true,
+    'liaison-dashboard':    true,
+    'doctor-dashboard':     true,
+    'lab-results-preview':  true,
+    'orders':               true,
+    'patients':             true,
+    'my-referrals':         true,
+    'my-patients':          true,
+    'consultations':        true
+  };
+
+  function modalOpen() {
+    var els = document.querySelectorAll('.modal.show, .modal.active');
+    if (els && els.length) return true;
+    var styled = document.querySelectorAll('.modal');
+    for (var i = 0; i < styled.length; i++) {
+      var d = (styled[i].style && styled[i].style.display) || '';
+      if (d === 'flex' || d === 'block') return true;
+    }
+    return false;
+  }
+
+  function callLoader(page, silent) {
+    APP.silentRefresh = !!silent;
+    try { _runLoader(page); } catch (e) { console.warn('Live loader error:', e); }
+    APP.silentRefresh = false;
+    lastLoaded[page] = Date.now();
+  }
+
+  function tick() {
+    if (!currentPage) return;
+    if (document.hidden) return;
+    if (modalOpen()) return;
+    if (!LIVE_PAGES[currentPage]) return;
+    callLoader(currentPage, true);
+  }
+
+  function start(page) {
+    currentPage = page;
+    stop(); // clear any previous timer
+    if (LIVE_PAGES[page]) {
+      pollTimer = setInterval(tick, POLL_MS);
+    }
+  }
+
+  function stop() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+
+  function isFresh(page) {
+    var t = lastLoaded[page];
+    return t && (Date.now() - t) < SWR_MS;
+  }
+
+  function markLoaded(page) { lastLoaded[page] = Date.now(); }
+
+  // Defined below — set up after DOMContentLoaded just in case.
+  document.addEventListener('visibilitychange', function(){
+    if (!document.hidden) tick(); // refresh once on tab focus
+  });
+
+  return { start: start, stop: stop, isFresh: isFresh, markLoaded: markLoaded };
+})();
+
+// Dispatcher used by Live.tick() and navigateTo().  Defined as a
+// separate function so navigateTo() and the polling timer share
+// the exact same routing logic.
+function _runLoader(page) {
+  if (page === 'dashboard'         && typeof dash_init     === 'function') return dash_init();
+  if (page === 'tech-dashboard'    && typeof techdash_load === 'function') return techdash_load();
+  if (page === 'tech-queue'        && typeof techdash_load === 'function') return techdash_load();
+  if (page === 'lab-results-preview' && typeof lrp_init    === 'function') return lrp_init();
+  if (page === 'template-settings' && typeof ts_init       === 'function') return ts_init();
+  if (page === 'doctor-dashboard'  && typeof drdash_load   === 'function') return drdash_load();
+  if (page === 'rec-dashboard'     && typeof recdash_load  === 'function') return recdash_load();
+  if (page === 'liaison-dashboard' && typeof liaisondash_load === 'function') return liaisondash_load();
+  if (page === 'reports'           && typeof rpt_init      === 'function') return rpt_init();
+  if (page === 'my-referrals'      && typeof ref_init      === 'function') return ref_init();
+  if (page === 'my-patients'       && typeof mypat_init    === 'function') return mypat_init();
+  if (page === 'consultations'     && typeof con_init      === 'function') return con_init();
+  if (page === 'branch-settings') {
+    if (typeof branchSettings_initPicker === 'function') branchSettings_initPicker();
+    var isSA = APP.user && APP.user.role === 'super_admin';
+    if (!isSA && typeof branchSettings_load === 'function') branchSettings_load();
+    return;
+  }
+  if (page === 'configurations') {
+    if (!APP.user || APP.user.role !== 'Super Admin') return;
+    if (typeof CFG !== 'undefined') cfg_load();
+    if (typeof tpl_load === 'function') tpl_load();
+    return;
+  }
+  if (page === 'branches'      && typeof BR   !== 'undefined') return br_load();
+  if (page === 'admins'        && typeof ADM  !== 'undefined') return adm_load();
+  if (page === 'departments'   && typeof DEPT !== 'undefined') return dept_load();
+  if (page === 'lab-services'  && typeof LS   !== 'undefined') return ls_load();
+  if (page === 'packages'      && typeof PKG  !== 'undefined') return pkg_load();
+  if (page === 'discounts'     && typeof DISC !== 'undefined') return disc_load();
+  if (page === 'patient-id-types' && typeof IDT !== 'undefined') return idt_load();
+  if (page === 'doctors'       && typeof DR   !== 'undefined') return dr_load();
+  if (page === 'technologists' && typeof TECH !== 'undefined') return tech_load();
+  if (page === 'orders'        && typeof ORD  !== 'undefined') return ord_init();
+  if (page === 'patients'      && typeof PAT  !== 'undefined') return pat_init();
+}
+
 /* ─── ROUTER ─── */
 function navigateTo(page) {
   if (!PAGES[page]) { console.warn('navigateTo: unknown page —', page); return; }
@@ -340,40 +491,18 @@ function navigateTo(page) {
   var main = document.querySelector('.app-main');
   if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
 
-  // ── Per-module lazy load ──
-  if (page === 'dashboard'         && typeof dash_init     === 'function') dash_init();
-  if (page === 'tech-dashboard'    && typeof techdash_load === 'function') techdash_load();
-  if (page === 'tech-queue'        && typeof techdash_load === 'function') techdash_load();
-  if (page === 'lab-results-preview' && typeof lrp_init === 'function') lrp_init();
-  if (page === 'template-settings' && typeof ts_init === 'function') ts_init();
-  if (page === 'doctor-dashboard'  && typeof drdash_load   === 'function') drdash_load();
-  if (page === 'rec-dashboard'     && typeof recdash_load  === 'function') recdash_load();
-  if (page === 'liaison-dashboard' && typeof liaisondash_load === 'function') liaisondash_load();
-  if (page === 'reports'           && typeof rpt_init      === 'function') rpt_init();
-  if (page === 'my-referrals'      && typeof ref_init      === 'function') ref_init();
-  if (page === 'my-patients'       && typeof mypat_init    === 'function') mypat_init();
-  if (page === 'consultations'     && typeof con_init      === 'function') con_init();
-  if (page === 'branch-settings') {
-    if (typeof branchSettings_initPicker === 'function') branchSettings_initPicker();
-    var isSA = APP.user && APP.user.role === 'super_admin';
-    if (!isSA && typeof branchSettings_load === 'function') branchSettings_load();
+  // ── Per-module lazy load (SWR + silent polling) ──
+  // If we just loaded this page a few seconds ago, the existing
+  // DOM is fresh enough — do a silent refresh instead of a noisy
+  // re-load that briefly blanks the screen.
+  if (Live.isFresh(page)) {
+    APP.silentRefresh = true;
+    try { _runLoader(page); } finally { APP.silentRefresh = false; }
+  } else {
+    _runLoader(page);
   }
-  if (page === 'configurations') {
-    if (!APP.user || APP.user.role !== 'Super Admin') return;
-    if (typeof CFG !== 'undefined') cfg_load();
-    if (typeof tpl_load === 'function') tpl_load();
-  }
-  // Always reload on navigate — view differs between SA and Branch Admin
-  if (page === 'branches'      && typeof BR   !== 'undefined') br_load();
-  if (page === 'admins'        && typeof ADM  !== 'undefined') adm_load();
-  if (page === 'departments'   && typeof DEPT !== 'undefined') dept_load();
-  if (page === 'lab-services'  && typeof LS   !== 'undefined') ls_load();
-  if (page === 'packages'      && typeof PKG  !== 'undefined') pkg_load();
-  if (page === 'discounts'     && typeof DISC !== 'undefined') disc_load();
-  if (page === 'doctors'       && typeof DR   !== 'undefined') dr_load();
-  if (page === 'technologists' && typeof TECH !== 'undefined') tech_load();
-  if (page === 'orders'        && typeof ORD  !== 'undefined') ord_init();
-  if (page === 'patients'      && typeof PAT  !== 'undefined') pat_init();
+  Live.markLoaded(page);
+  Live.start(page);
 }
 
 /* ─── SIDEBAR ─── */

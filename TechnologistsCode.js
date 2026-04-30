@@ -46,7 +46,14 @@ function getTechBranchList_() {
 }
 
 // ── READ ─────────────────────────────────────────────────────
-function getTechnologists(branchIds) {
+function getTechnologists(branchIds, includeArchived) {
+  const filter = (branchIds || '').toString().trim();
+  const inc    = !!includeArchived;
+  const cacheKey = (filter || 'all') + (inc ? ':inc_arch' : '');
+  return withCache_('technologists', cacheKey, 60, function() { return _getTechnologists_(filter, inc); });
+}
+
+function _getTechnologists_(branchIds, includeArchived) {
   try {
     const sh = getTechSheet_();
     const lr = sh.getLastRow();
@@ -54,9 +61,11 @@ function getTechnologists(branchIds) {
 
     const branchMap = buildTechBranchMap_();
     const filterIds = branchIds ? branchIds.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const archCol   = findArchiveCol_(sh);
 
     const data = sh.getRange(2, 1, lr-1, Math.max(14, sh.getLastColumn())).getValues()
       .filter(r => r[0] && String(r[0]).trim())
+      .filter(r => includeArchived || !isArchivedRow_(r, archCol))
       .map(r => {
         const bIds  = String(r[5]||'').trim();
         const bDisp = bIds
@@ -95,6 +104,7 @@ function getTechnologists(branchIds) {
 
 // ── CREATE ───────────────────────────────────────────────────
 function createTechnologist(payload) {
+  return withLock_(function() {
   try {
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
     if (!payload.first_name) return { success: false, message: 'First name is required.' };
@@ -132,6 +142,7 @@ function createTechnologist(payload) {
         (payload.assigned_deps || '').trim()
     ]);
 
+    cacheBust_('technologists');
     writeAuditLog_('TECH_CREATE', { tech_id: techId, name: payload.last_name + ', ' + payload.first_name });
     Logger.log('createTechnologist: ' + techId);
     return { success: true, tech_id: techId };
@@ -139,10 +150,12 @@ function createTechnologist(payload) {
     Logger.log('createTechnologist ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── UPDATE ───────────────────────────────────────────────────
 function updateTechnologist(payload) {
+  return withLock_(function() {
   try {
     if (!payload.tech_id)    return { success: false, message: 'Tech ID is required.' };
     if (!payload.last_name)  return { success: false, message: 'Last name is required.' };
@@ -187,12 +200,14 @@ function updateTechnologist(payload) {
       (payload.assigned_deps || '').trim()
     ]]);
 
+    cacheBust_('technologists');
     writeAuditLog_('TECH_UPDATE', { tech_id: payload.tech_id });
     return { success: true };
   } catch(e) {
     Logger.log('updateTechnologist ERROR: ' + e.message);
     return { success: false, message: e.message };
   }
+  });
 }
 
 // ── DELETE ───────────────────────────────────────────────────
@@ -211,22 +226,40 @@ function getTechRoleById(techId) {
   }
 }
 
-function deleteTechnologist(techId) {
-  try {
-    if (!techId) return { success: false, message: 'Tech ID is required.' };
-    const sh  = getTechSheet_();
-    const lr  = sh.getLastRow();
-    if (lr < 2) return { success: false, message: 'Technologist not found.' };
-
-    const ids    = sh.getRange(2, 1, lr-1, 1).getValues().flat().map(String);
-    const rowIdx = ids.findIndex(id => id.trim() === techId.trim());
-    if (rowIdx === -1) return { success: false, message: 'Technologist not found.' };
-
-    sh.deleteRow(rowIdx + 2);
-    writeAuditLog_('TECH_DELETE', { tech_id: techId });
-    return { success: true };
-  } catch(e) {
-    Logger.log('deleteTechnologist ERROR: ' + e.message);
-    return { success: false, message: e.message };
-  }
+// Soft-delete: archives the row instead of removing it.  See Archive.gs.
+function archiveTechnologist(techId) {
+  return withLock_(function() {
+    try {
+      if (!techId) return { success: false, message: 'Tech ID is required.' };
+      const sh = getTechSheet_();
+      const r  = setArchiveFlag_(sh, techId, true);
+      if (!r.ok) return { success: false, message: 'Technologist not found.' };
+      cacheBust_('technologists');
+      writeAuditLog_('TECH_ARCHIVE', { tech_id: techId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('archiveTechnologist ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
 }
+
+function unarchiveTechnologist(techId) {
+  return withLock_(function() {
+    try {
+      if (!techId) return { success: false, message: 'Tech ID is required.' };
+      const sh = getTechSheet_();
+      const r  = setArchiveFlag_(sh, techId, false);
+      if (!r.ok) return { success: false, message: 'Technologist not found.' };
+      cacheBust_('technologists');
+      writeAuditLog_('TECH_UNARCHIVE', { tech_id: techId });
+      return { success: true };
+    } catch(e) {
+      Logger.log('unarchiveTechnologist ERROR: ' + e.message);
+      return { success: false, message: e.message };
+    }
+  });
+}
+
+// Backward-compat — old UIs still call deleteTechnologist; route to archive.
+function deleteTechnologist(techId) { return archiveTechnologist(techId); }

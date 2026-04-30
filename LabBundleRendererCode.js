@@ -696,7 +696,7 @@ function getLabPreviewOrders(branchId) {
     var br = brRows.find(function (r) { return String(r[0]).trim() === branchId; });
     if (!br || !br[7]) return { success: false, message: 'Branch spreadsheet not configured.' };
 
-    var bss = SpreadsheetApp.openById(String(br[7]).trim());
+    var bss = openSS_(String(br[7]).trim());
     var ordSh = bss.getSheetByName('LAB_ORDER');
     var itemSh = bss.getSheetByName('LAB_ORDER_ITEM');
     var patSh = bss.getSheetByName('Patients');
