@@ -313,7 +313,12 @@ function pkg_load() {
   // Always hide SA branch packages view on load — shown only after data confirmed
   if (saBranchView) saBranchView.style.display = 'none';
 
-  var silent = !!(PKG.all && PKG.all.length && APP.silentRefresh);
+  // Branch Admin populates PKG.branchGlobal / PKG.branchOwn instead of
+  // PKG.all, so check all three to detect "page already has data".
+  var hasData = !!((PKG.all && PKG.all.length) ||
+                   (PKG.branchGlobal && PKG.branchGlobal.length) ||
+                   (PKG.branchOwn && PKG.branchOwn.length));
+  var silent = !!(hasData && APP.silentRefresh);
   var icon = document.getElementById('pkgRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
   if (!silent) {

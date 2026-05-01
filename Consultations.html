@@ -122,9 +122,10 @@ function con_load() {
         return;
       }
       // getDoctorPatients returns orders assigned to this doctor
-      CON.orders   = r.data || [];
-      CON.filtered = CON.orders;
-      con_renderList();
+      CON.orders = r.data || [];
+      // Re-apply current search filter so SWR refresh doesn't drop
+      // whatever query the user currently has typed.
+      con_filterOrders();
     })
     .withFailureHandler(function(e) {
       document.getElementById('conOrderList').innerHTML =
