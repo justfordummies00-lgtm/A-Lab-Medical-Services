@@ -1527,8 +1527,9 @@ function techdash_saveToDrive() {
         (r.xray_results || []).forEach(function(x) {
           if (x.url) bits.push('<a href="' + _e(x.url) + '" target="_blank" class="btn btn-secondary btn-sm">' + _e(x.serv_name || 'X-Ray') + ' .docx</a>');
         });
+        var hasErr = !!(r.lab_error || (r.xray_errors && r.xray_errors.length));
         var errMsg = '';
-        if ((r.xray_errors && r.xray_errors.length) || r.lab_error) {
+        if (hasErr) {
           var errParts = [];
           if (r.lab_error) errParts.push('Lab: ' + r.lab_error);
           (r.xray_errors || []).forEach(function(xe) { if (xe && xe.message) errParts.push((xe.serv_name || 'X-Ray') + ': ' + xe.message); });
@@ -1537,12 +1538,18 @@ function techdash_saveToDrive() {
         resDiv.style.display = '';
         resDiv.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--text-2);">'
           + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-          + '<span style="font-weight:700;color:var(--text-1);">Saved to patient folder:</span>'
+          + '<span style="font-weight:700;color:var(--text-1);">' + (hasErr ? 'Partially saved' : 'Saved to patient folder') + ':</span>'
           + bits.join('')
           + '</div>' + errMsg
           + '</div>';
+        if (hasErr) {
+          toast('error', 'Result saved with errors. See details on the Preview tab.');
+        } else {
+          toast('success', 'Result saved to Drive.');
+        }
+      } else {
+        toast('success', 'Result saved to Drive.');
       }
-      toast('success', 'Result saved to Drive.');
       // Refresh encoding side so the per-service "Result Ready" cards pick up the new URL.
       if (TDASH.selectedItem) techdash_renderServicePanel();
     })

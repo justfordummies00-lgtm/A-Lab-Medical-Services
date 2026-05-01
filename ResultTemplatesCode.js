@@ -1414,6 +1414,19 @@ function generateOrderResultDrive(branchId, orderId, encodedBy) {
     var iCols = Math.max(itemSh.getLastColumn(), 16);
     var iRows = itemSh.getRange(2, 1, itemSh.getLastRow() - 1, iCols).getValues();
 
+    // Look up the human-readable order number once so saveXrayResultAndPdf
+    // can use it in the .docx filename instead of the raw orderId UUID.
+    var orderNo = '';
+    try {
+      var ordSh = ss.getSheetByName('LAB_ORDER');
+      if (ordSh && ordSh.getLastRow() >= 2) {
+        var oCols = Math.max(ordSh.getLastColumn(), 20);
+        var ordRow = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, oCols).getValues()
+          .find(function (r) { return String(r[0]).trim() === orderId; });
+        if (ordRow) orderNo = String(ordRow[1] || '').trim();
+      }
+    } catch (e) { Logger.log('generateOrderResultDrive orderNo lookup: ' + e.message); }
+
     // Loop the RESULT_ITEMS rows where unit is XRAY_DOCX/XRAY_PDF.
     var rCols = Math.max(itemsSh.getLastColumn(), 14);
     var rRows = itemsSh.getLastRow() >= 2
@@ -1429,9 +1442,8 @@ function generateOrderResultDrive(branchId, orderId, encodedBy) {
       var findings    = String(r[12] || '').trim();
       var impression  = String(r[13] || '').trim();
 
-      // Look up serv_id from LAB_ORDER_ITEM (col 2 is order_id, col 0 is order_item_id, serv id at col 2 or 3?)
+      // Look up serv_id from LAB_ORDER_ITEM (col 0 is order_item_id, col 1 is order_id, col 2 is serv_id).
       var servId = '';
-      var orderNo = '';
       var oRow = iRows.find(function (ir) {
         return String(ir[0]).trim() === orderItemId && String(ir[1]).trim() === orderId;
       });
