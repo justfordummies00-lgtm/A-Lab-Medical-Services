@@ -234,10 +234,12 @@ function mountApp(silent) {
     var branchesNavItem = document.querySelector('.sb-nav-item[data-page="branches"]');
     var configNavItem   = document.querySelector('.sb-nav-item[data-page="configurations"]');
     var branchSettingsNavItem = document.getElementById('sbNavBranchSettings');
+    var templateSettingsNavItem = document.getElementById('sbNavTemplateSettings');
     if (adminsNavItem)   adminsNavItem.style.display   = isSA ? '' : 'none';
     if (branchesNavItem) branchesNavItem.style.display = isSA ? '' : 'none';
     if (configNavItem)   configNavItem.style.display   = isSA ? '' : 'none';
     if (branchSettingsNavItem) branchSettingsNavItem.style.display = isSA || u.role === 'Branch Admin' ? '' : 'none';
+    if (templateSettingsNavItem) templateSettingsNavItem.style.display = isSA || u.role === 'Branch Admin' ? '' : 'none';
     var hn = document.getElementById('heroName');
     if (hn) hn.textContent = 'Welcome back, ' + (u.name || u.username || 'Admin');
   }
