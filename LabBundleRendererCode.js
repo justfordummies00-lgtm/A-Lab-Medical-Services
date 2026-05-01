@@ -844,11 +844,49 @@ function getLabPreviewData(branchId, orderId) {
       });
     });
 
-    if (catOrder.length === 0) {
-      return { success: false, message: 'No encoded lab results found for this order.' };
+    // 3. Fetch encoded X-Ray items (Phase 3a addition).
+    //    The Preview Result tab in Tech Dashboard renders both lab and
+    //    X-Ray on the same page, so the API surface returns them together.
+    var xrayItems = [];
+    var xraySignatures = null;
+    try {
+      var ssX = getOrderSS_(branchId);
+      var itemsShX = _getResultItemsSheet_(ssX);
+      if (itemsShX && itemsShX.getLastRow() >= 2) {
+        var rColsX = Math.max(itemsShX.getLastColumn(), 14);
+        var rRowsX = itemsShX.getRange(2, 1, itemsShX.getLastRow() - 1, rColsX).getValues();
+        rRowsX.forEach(function (r) {
+          if (String(r[1]).trim() !== orderId) return;
+          var unit = String(r[5]).trim();
+          if (unit !== 'XRAY_DOCX' && unit !== 'XRAY_PDF') return;
+          xrayItems.push({
+            order_item_id: String(r[2]).trim(),
+            serv_name: String(r[3] || '').trim(),
+            clinical_data: String(r[11] || '').trim(),
+            findings: String(r[12] || '').trim(),
+            impression: String(r[13] || '').trim(),
+            url: String(r[4] || '').trim()
+          });
+        });
+      }
+      if (xrayItems.length) {
+        var xs = (typeof getXraySignatures === 'function') ? getXraySignatures(branchId) : null;
+        if (xs && xs.success && xs.radiologist) {
+          xraySignatures = {
+            radiologist_name:          xs.radiologist.name || '',
+            radiologist_cred:          xs.radiologist.credentials || '',
+            radiologist_license_no:    xs.radiologist.license_no || '',
+            radiologist_signature_url: xs.radiologist.signature_url || ''
+          };
+        }
+      }
+    } catch (e) { Logger.log('getLabPreviewData xray fetch: ' + e.message); }
+
+    if (catOrder.length === 0 && xrayItems.length === 0) {
+      return { success: false, message: 'No encoded results found for this order.' };
     }
 
-    // 3. Collect signature info
+    // 4. Collect signature info
     var signatures = {};
     try {
       if (patient.medtech_name) {
@@ -865,7 +903,7 @@ function getLabPreviewData(branchId, orderId) {
       }
     } catch (e) {}
 
-    // 4. Format patient for display
+    // 5. Format patient for display
     var now = formatShortDate_(new Date());
     var displayPatient = {
       name: (patient.name || '').toUpperCase(),
@@ -881,7 +919,9 @@ function getLabPreviewData(branchId, orderId) {
       success: true,
       patient: displayPatient,
       signatures: signatures,
-      categories: catOrder.map(function (cid) { return groups[cid]; })
+      categories: catOrder.map(function (cid) { return groups[cid]; }),
+      xray_items: xrayItems,
+      xray_signatures: xraySignatures
     };
   } catch (e) {
     Logger.log('getLabPreviewData ERROR: ' + e.message);
