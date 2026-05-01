@@ -1230,15 +1230,21 @@ function getBranchLabServices(branchId) {
     }
 
     // ── Discounts ──
+    // Read 9 cols so requires_id_type_id (col I) is included on
+    // the wizard.  Older sheets that pre-date the column will get
+    // r[8] === undefined; coerce to '' so the client can rely on
+    // a string field.
     const discSh = ss.getSheetByName('Discounts');
+    const discCols = discSh ? Math.max(discSh.getLastColumn(), 9) : 0;
     const discounts = discSh && discSh.getLastRow() >= 2
-      ? discSh.getRange(2, 1, discSh.getLastRow() - 1, 6).getValues()
+      ? discSh.getRange(2, 1, discSh.getLastRow() - 1, discCols).getValues()
         .filter(r => r[0] && r[5] == 1)
         .map(r => ({
-          discount_id: String(r[0]).trim(),
-          discount_name: String(r[1] || '').trim(),
-          type: String(r[3] || '').trim(),
-          value: Number(r[4]) || 0
+          discount_id:        String(r[0]).trim(),
+          discount_name:      String(r[1] || '').trim(),
+          type:               String(r[3] || '').trim(),
+          value:              Number(r[4]) || 0,
+          requires_id_type_id: String(r[8] || '').trim()
         }))
       : [];
 

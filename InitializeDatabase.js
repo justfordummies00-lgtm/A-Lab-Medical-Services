@@ -177,8 +177,13 @@ function initializeMainDatabase() {
     // ── 17. Discounts ─────────────────────────────────────────
     // A=discount_id  B=discount_name  C=description
     // D=type (percentage|fixed)  E=value  F=is_active
+    // G=created_at  H=updated_at
+    // I=requires_id_type_id (optional FK into Patient_ID_Types —
+    //                        empty means the discount applies
+    //                        without an ID check)
     const { created: c17 } = ensureSheet_(ss, 'Discounts',
-      ['discount_id', 'discount_name', 'description', 'type', 'value', 'is_active'],
+      ['discount_id', 'discount_name', 'description', 'type', 'value',
+       'is_active', 'created_at', 'updated_at', 'requires_id_type_id'],
       '#b45309');
     logs.push((c17 ? '✅ Created' : '⏭ Skipped') + ': Discounts');
 

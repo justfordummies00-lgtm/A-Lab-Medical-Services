@@ -4,13 +4,31 @@
 //  Discounts sheet:
 //    A=discount_id  B=discount_name  C=description
 //    D=type  E=value  F=is_active  G=created_at  H=updated_at
+//    I=requires_id_type_id
 //
 //  type: 'percentage' | 'fixed'
+//
+//  requires_id_type_id (optional): foreign key into
+//  Patient_ID_Types.  When set, the order wizard requires the
+//  patient to have a value for that ID type before the discount
+//  can be applied — prompting inline if missing and persisting
+//  the answer to the patient profile via setPatientId().  Empty
+//  means no ID is required.
 // ============================================================
 
 function getDiscountSheet_() {
   const sh = getSS_().getSheetByName('Discounts');
   if (!sh) throw new Error('"Discounts" sheet not found.');
+  // Auto-extend old sheets that pre-date the requires_id_type_id
+  // column so reads/writes don't silently drop the field.  Header
+  // styling matches the rest of the Discounts header row.
+  if (sh.getLastColumn() < 9) {
+    sh.getRange(1, 9)
+      .setValue('requires_id_type_id')
+      .setFontWeight('bold')
+      .setBackground('#b45309')
+      .setFontColor('#ffffff');
+  }
   return sh;
 }
 
@@ -23,18 +41,21 @@ function _getDiscounts_() {
   try {
     const sh = getDiscountSheet_();
     const lr = sh.getLastRow();
+    // Read 9 cols so requires_id_type_id is included even on
+    // freshly-migrated sheets that have only 8 cells of data.
     const data = lr < 2 ? [] :
-      sh.getRange(2, 1, lr-1, 8).getValues()
+      sh.getRange(2, 1, lr-1, 9).getValues()
         .filter(r => r[0] && String(r[0]).trim())
         .map(r => ({
-          discount_id:   String(r[0]).trim(),
-          discount_name: String(r[1]||'').trim(),
-          description:   String(r[2]||'').trim(),
-          type:          String(r[3]||'percentage').trim(),
-          value:         parseFloat(r[4])||0,
-          is_active:     r[5]==1?1:0,
-          created_at:    r[6] ? new Date(r[6]).toISOString() : '',
-          updated_at:    r[7] ? new Date(r[7]).toISOString() : ''
+          discount_id:        String(r[0]).trim(),
+          discount_name:      String(r[1]||'').trim(),
+          description:        String(r[2]||'').trim(),
+          type:               String(r[3]||'percentage').trim(),
+          value:              parseFloat(r[4])||0,
+          is_active:          r[5]==1?1:0,
+          created_at:         r[6] ? new Date(r[6]).toISOString() : '',
+          updated_at:         r[7] ? new Date(r[7]).toISOString() : '',
+          requires_id_type_id: String(r[8]||'').trim()
         }));
     Logger.log('getDiscounts: ' + data.length);
     return { success: true, data };
@@ -66,6 +87,7 @@ function createDiscount(payload) {
     }
 
     const discId = 'DISC-' + Math.random().toString(16).substr(2,8).toUpperCase();
+    const requiresIdTypeId = (payload.requires_id_type_id || '').trim();
     sh.appendRow([
       discId,
       payload.discount_name.trim(),
@@ -73,11 +95,16 @@ function createDiscount(payload) {
       payload.type,
       payload.value,
       1,
-      now, now
+      now, now,
+      requiresIdTypeId
     ]);
 
     cacheBust_('discounts');
-    writeAuditLog_('DISC_CREATE', { discount_id: discId, discount_name: payload.discount_name });
+    writeAuditLog_('DISC_CREATE', {
+      discount_id: discId,
+      discount_name: payload.discount_name,
+      requires_id_type_id: requiresIdTypeId
+    });
     Logger.log('createDiscount: ' + discId);
     return { success: true, discount_id: discId };
   } catch(e) {
@@ -101,8 +128,10 @@ function updateDiscount(payload) {
     const lr  = sh.getLastRow();
     if (lr < 2) return { success: false, message: 'Discount not found.' };
 
-    // Single batch read
-    const allRows = sh.getRange(2,1,lr-1,8).getValues();
+    // Single batch read — 9 cols so we can preserve the existing
+    // requires_id_type_id when callers don't include it in the
+    // payload (e.g. older clients).
+    const allRows = sh.getRange(2,1,lr-1,9).getValues();
     const rowIdx  = allRows.findIndex(r => String(r[0]).trim() === payload.discount_id.trim());
     if (rowIdx === -1) return { success: false, message: 'Discount not found.' };
 
@@ -116,19 +145,27 @@ function updateDiscount(payload) {
     const existRow  = allRows[rowIdx];
     const createdAt = existRow[6] || new Date();
     const isActive  = existRow[5];
+    const requiresIdTypeId = payload.requires_id_type_id !== undefined
+      ? String(payload.requires_id_type_id || '').trim()
+      : String(existRow[8]||'').trim();
 
-    sh.getRange(rowIdx+2, 2, 1, 7).setValues([[
+    sh.getRange(rowIdx+2, 2, 1, 8).setValues([[
       payload.discount_name.trim(),
       (payload.description||'').trim(),
       payload.type,
       payload.value,
       isActive,
       createdAt,
-      new Date()
+      new Date(),
+      requiresIdTypeId
     ]]);
 
     cacheBust_('discounts');
-    writeAuditLog_('DISC_UPDATE', { discount_id: payload.discount_id, discount_name: payload.discount_name });
+    writeAuditLog_('DISC_UPDATE', {
+      discount_id: payload.discount_id,
+      discount_name: payload.discount_name,
+      requires_id_type_id: requiresIdTypeId
+    });
     return { success: true };
   } catch(e) {
     Logger.log('updateDiscount ERROR: ' + e.message);

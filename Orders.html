@@ -462,17 +462,16 @@
               Total discount: <span id="wizDiscTotalAmt"
                 style="font-weight:800;color:var(--danger);font-family:var(--mono);"></span>
             </div>
-            <!-- ID prompt — appears before SC/PWD discount is applied when no ID on file -->
+            <!-- ID prompt — appears when a discount with a required ID
+                 type is applied and the patient has no value on file.
+                 Generic over any Patient_ID_Types entry; the input
+                 label/placeholder reflect the chosen type at runtime. -->
             <div id="wizDiscIdArea" style="display:none;margin-top:10px;padding:12px;background:rgba(245,158,11,.06);border:1.5px solid rgba(245,158,11,.3);border-radius:var(--radius);">
               <div style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:2px;">ID required</div>
               <div id="wizDiscIdLabel" style="font-size:11px;color:#b45309;margin-bottom:10px;"></div>
-              <div id="wizScIdWrap" style="display:none;margin-bottom:8px;">
-                <label style="font-size:10px;font-weight:700;color:#b45309;display:block;margin-bottom:3px;">Senior Citizen ID <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="wizScId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter Senior Citizen ID No.">
-              </div>
-              <div id="wizPwdIdWrap" style="display:none;margin-bottom:8px;">
-                <label style="font-size:10px;font-weight:700;color:#7c3aed;display:block;margin-bottom:3px;">PWD ID <span style="color:var(--danger);">*</span></label>
-                <input type="text" id="wizPwdId" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter PWD ID No.">
+              <div id="wizDiscIdWrap" style="margin-bottom:8px;">
+                <label id="wizDiscIdInputLabel" style="font-size:10px;font-weight:700;color:#b45309;display:block;margin-bottom:3px;">ID No. <span style="color:var(--danger);">*</span></label>
+                <input type="text" id="wizDiscIdInput" class="f-inp" style="font-size:12px;font-family:var(--mono);" placeholder="Enter ID No.">
               </div>
               <div style="display:flex;gap:6px;">
                 <button onclick="ord_confirmDiscountId()" class="btn btn-primary btn-sm" style="flex:1;justify-content:center;font-size:12px;">Apply Discount</button>
@@ -1839,7 +1838,17 @@
       doctorId: '', doctorId2: '', notes: '',
       items: [], appliedDiscounts: [], services: [],
       packages: [], discounts: [], doctors: [], patients: [], svcSubTab: 'services',
-      payMode: 'now'
+      payMode: 'now',
+      // Map of id_type_id → id_value for the currently-selected
+      // patient.  Populated when a patient is picked and updated
+      // inline when the receptionist enters a missing ID for an
+      // ID-required discount.  Cleared whenever the patient is
+      // unselected.
+      patientIds: {},
+      // Cached Patient_ID_Types catalog (id_type_id → type record).
+      // Loaded once per wizard session, used to resolve human
+      // readable labels for the ID prompt and discount badges.
+      idTypes: {}
     };
     ord_wizRender(1);
     document.getElementById('ordWizard').style.display = 'flex';
@@ -1862,6 +1871,21 @@
       })
       .withFailureHandler(function () { })
       .getBranchLabServices(ORD.branchId);
+
+    // Load the Patient_ID_Types catalog so the ID prompt can
+    // show the proper label (e.g. "Senior Citizen ID", "Solo
+    // Parent ID").  Lightweight admin-managed list, cached
+    // server-side too.
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r && r.success && Array.isArray(r.data)) {
+          var map = {};
+          r.data.forEach(function (t) { if (t.is_archived != 1) map[t.id_type_id] = t; });
+          ORD.wiz.idTypes = map;
+        }
+      })
+      .withFailureHandler(function () { })
+      .getPatientIdTypes(false);
 
     google.script.run
       .withSuccessHandler(function (r) {
@@ -2045,6 +2069,16 @@
     ORD.wiz.patientScId = scId || '';
     ORD.wiz.patientPwdId = pwdId || '';
     ORD.wiz.philBalance = null;
+
+    // Seed the per-patient ID map from the builtin Patients-sheet
+    // columns we already have in memory.  Non-builtin types are
+    // fetched separately via getPatientIds() below; until that
+    // returns, only builtins are checkable.
+    ORD.wiz.patientIds = {};
+    if (philPin) ORD.wiz.patientIds['IDT-PHILHEALTH'] = philPin;
+    if (scId)    ORD.wiz.patientIds['IDT-SENIOR']     = scId;
+    if (pwdId)   ORD.wiz.patientIds['IDT-PWD']        = pwdId;
+
     document.getElementById('wizPatCard').style.display = '';
     document.getElementById('wizPatName').textContent = name;
     document.getElementById('wizPatMeta').textContent = meta;
@@ -2055,6 +2089,23 @@
     if (pwdId) idBadges += ' <span style="font-size:10px;background:rgba(124,58,237,.12);color:#7c3aed;padding:1px 6px;border-radius:10px;font-family:var(--mono);">PWD ID: ' + _e(pwdId) + '</span>';
     discEl.innerHTML = discTxt + idBadges;
     ord_renderPatList();
+
+    // Fetch the patient's full ID set so non-builtin discount-gated
+    // IDs (e.g. Solo Parent) can be checked without prompting.  This
+    // is fire-and-forget — if it fails the receptionist will still
+    // be prompted at apply-time and can save the value inline.
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (r && r.success && Array.isArray(r.data)) {
+          r.data.forEach(function (entry) {
+            if (entry && entry.id_type_id && entry.id_value) {
+              ORD.wiz.patientIds[entry.id_type_id] = String(entry.id_value).trim();
+            }
+          });
+        }
+      })
+      .withFailureHandler(function () { })
+      .getPatientIds(ORD.branchId, id);
 
     // Fetch PhilHealth balance if patient has PIN
     var philEl = document.getElementById('wizPhilhealthInfo');
@@ -2084,6 +2135,7 @@
     ORD.wiz.patientDiscountIds = [];
     ORD.wiz.patientScId = '';
     ORD.wiz.patientPwdId = '';
+    ORD.wiz.patientIds = {};
     document.getElementById('wizPatCard').style.display = 'none';
     document.getElementById('wizPatSearch').value = '';
     ord_renderPatList();
@@ -2286,6 +2338,25 @@
     });
   }
 
+  /* ── Lookup helpers for the new requires_id_type_id flow ── */
+  function ord_idTypeName_(idTypeId) {
+    if (!idTypeId) return '';
+    var t = ORD.wiz.idTypes && ORD.wiz.idTypes[idTypeId];
+    if (t && t.name) return t.name;
+    // Sensible fallbacks for the three builtins in case the ID
+    // Types catalog hasn't loaded yet.
+    if (idTypeId === 'IDT-PHILHEALTH') return 'PhilHealth';
+    if (idTypeId === 'IDT-SENIOR')     return 'Senior Citizen';
+    if (idTypeId === 'IDT-PWD')        return 'PWD';
+    return idTypeId;
+  }
+
+  function ord_patientHasId_(idTypeId) {
+    if (!idTypeId) return true;  // No requirement → always satisfied
+    var v = ORD.wiz.patientIds && ORD.wiz.patientIds[idTypeId];
+    return !!(v && String(v).trim());
+  }
+
   /* ── Add discount to order ── */
   function ord_addDiscount(sel) {
     var discId = sel.value;
@@ -2299,58 +2370,83 @@
     var d = ORD.wiz.discounts.find(function (x) { return x.discount_id === discId; });
     if (!d) return;
 
-    var n    = (d.discount_name || '').toLowerCase();
-    var isSc = n.indexOf('senior') !== -1;
-    var isPwd = n.indexOf('pwd') !== -1 || n.indexOf('disability') !== -1;
-
-    // SC discount — require ID before applying
-    if (isSc && !ORD.wiz.patientScId) {
+    // Field-based gate: discounts opt-in to ID checking via the
+    // requires_id_type_id field.  When set, the patient must have
+    // a non-empty value for that ID type before the discount can
+    // be applied; if missing we prompt inline.
+    var reqId = (d.requires_id_type_id || '').trim();
+    if (reqId && !ord_patientHasId_(reqId)) {
+      var typeName = ord_idTypeName_(reqId);
       ORD.wiz._pendingDiscount = d;
-      document.getElementById('wizDiscIdLabel').textContent = 'Enter the Senior Citizen ID to apply "' + d.discount_name + '"';
-      document.getElementById('wizScIdWrap').style.display  = '';
-      document.getElementById('wizPwdIdWrap').style.display = 'none';
-      document.getElementById('wizScId').value  = '';
+      document.getElementById('wizDiscIdLabel').textContent =
+        'Enter the ' + typeName + ' ID to apply "' + d.discount_name + '"';
+      var lbl = document.getElementById('wizDiscIdInputLabel');
+      if (lbl) lbl.innerHTML = _e(typeName) + ' ID <span style="color:var(--danger);">*</span>';
+      var inp = document.getElementById('wizDiscIdInput');
+      if (inp) {
+        inp.value = '';
+        inp.placeholder = 'Enter ' + typeName + ' ID No.';
+      }
       document.getElementById('wizDiscIdArea').style.display = '';
-      document.getElementById('wizScId').focus();
-      return;
-    }
-
-    // PWD discount — require ID before applying
-    if (isPwd && !ORD.wiz.patientPwdId) {
-      ORD.wiz._pendingDiscount = d;
-      document.getElementById('wizDiscIdLabel').textContent = 'Enter the PWD ID to apply "' + d.discount_name + '"';
-      document.getElementById('wizPwdIdWrap').style.display = '';
-      document.getElementById('wizScIdWrap').style.display  = 'none';
-      document.getElementById('wizPwdId').value  = '';
-      document.getElementById('wizDiscIdArea').style.display = '';
-      document.getElementById('wizPwdId').focus();
+      if (inp) inp.focus();
       return;
     }
 
     ord_applyDiscount_(d);
   }
 
-  /* ── Confirm ID and apply the pending discount ── */
+  /* ── Confirm ID and apply the pending discount ──
+     Persists the entered ID to the patient profile via
+     setPatientId() so the next order for the same patient
+     won't re-prompt.  If the save fails we still apply the
+     discount locally and surface a warning toast — the value
+     is kept in the wizard's per-patient map so the receptionist
+     isn't blocked, and they can retry on the patient form. */
   function ord_confirmDiscountId() {
     var d = ORD.wiz._pendingDiscount;
     if (!d) return;
-    var n    = (d.discount_name || '').toLowerCase();
-    var isSc = n.indexOf('senior') !== -1;
-
-    if (isSc) {
-      var idVal = (document.getElementById('wizScId').value || '').trim();
-      if (!idVal) { toast('error', 'Please enter the Senior Citizen ID.'); document.getElementById('wizScId').focus(); return; }
-      ORD.wiz.patientScId = idVal;
-    } else {
-      var idVal = (document.getElementById('wizPwdId').value || '').trim();
-      if (!idVal) { toast('error', 'Please enter the PWD ID.'); document.getElementById('wizPwdId').focus(); return; }
-      ORD.wiz.patientPwdId = idVal;
+    var reqId = (d.requires_id_type_id || '').trim();
+    if (!reqId) {
+      // Defensive: requirement vanished — just apply.
+      document.getElementById('wizDiscIdArea').style.display = 'none';
+      ORD.wiz._pendingDiscount = null;
+      ord_applyDiscount_(d);
+      return;
     }
+
+    var inp = document.getElementById('wizDiscIdInput');
+    var idVal = inp ? (inp.value || '').trim() : '';
+    if (!idVal) {
+      toast('error', 'Please enter the ' + ord_idTypeName_(reqId) + ' ID.');
+      if (inp) inp.focus();
+      return;
+    }
+
+    // Update local state immediately so the discount applies
+    // without waiting on the network round-trip.
+    ORD.wiz.patientIds[reqId] = idVal;
+    if (reqId === 'IDT-SENIOR') ORD.wiz.patientScId = idVal;
+    if (reqId === 'IDT-PWD')    ORD.wiz.patientPwdId = idVal;
+    if (reqId === 'IDT-PHILHEALTH') ORD.wiz.patientPhilPin = idVal;
+
+    // Persist to the patient profile in the background.
+    google.script.run
+      .withSuccessHandler(function (r) {
+        if (!r || !r.success) {
+          toast('warning', 'Discount applied, but saving the ID to the patient profile failed: ' + ((r && r.message) || 'unknown error'));
+        }
+      })
+      .withFailureHandler(function (e) {
+        toast('warning', 'Discount applied, but saving the ID to the patient profile failed: ' + (e.message || 'connection error'));
+      })
+      .setPatientId(ORD.branchId, ORD.wiz.patientId, reqId, idVal);
 
     document.getElementById('wizDiscIdArea').style.display = 'none';
     ORD.wiz._pendingDiscount = null;
 
-    // Refresh the patient card ID badges to reflect the newly entered ID
+    // Refresh the patient card ID badges to reflect the newly
+    // entered builtin IDs (badges are still SC/PWD-specific in
+    // Phase 1; non-builtin IDs are tracked silently in patientIds).
     var scId  = ORD.wiz.patientScId;
     var pwdId = ORD.wiz.patientPwdId;
     var discEl = document.getElementById('wizPatDisc');
@@ -2379,7 +2475,8 @@
       : Math.min(d.value, subtotal);
     ORD.wiz.appliedDiscounts.push({
       discount_id: d.discount_id, discount_name: d.discount_name,
-      type: d.type, value: d.value, amount: amt
+      type: d.type, value: d.value, amount: amt,
+      requires_id_type_id: (d.requires_id_type_id || '').trim()
     });
     ord_renderDiscChips();
     ord_updateTotals();
@@ -2405,12 +2502,15 @@
     }
     chips.innerHTML = ORD.wiz.appliedDiscounts.map(function (d) {
       var valDisp  = d.type === 'percentage' ? d.value + '%' : '₱' + d.value;
-      var n        = (d.discount_name || '').toLowerCase();
-      var isSc     = n.indexOf('senior') !== -1;
-      var isPwd    = n.indexOf('pwd') !== -1 || n.indexOf('disability') !== -1;
-      var idBadge  = '';
-      if (isSc && ORD.wiz.patientScId)   idBadge = ' <span style="font-size:10px;font-weight:600;font-family:var(--mono);opacity:.85;">· SC ID: ' + _e(ORD.wiz.patientScId) + '</span>';
-      if (isPwd && ORD.wiz.patientPwdId) idBadge = ' <span style="font-size:10px;font-weight:600;font-family:var(--mono);opacity:.85;">· PWD ID: ' + _e(ORD.wiz.patientPwdId) + '</span>';
+      // Show the actual ID value next to the chip whenever the
+      // discount is gated on an ID type the patient now satisfies.
+      // Lookup is field-based via requires_id_type_id (no name match).
+      var idBadge = '';
+      var reqId = (d.requires_id_type_id || '').trim();
+      if (reqId && ORD.wiz.patientIds && ORD.wiz.patientIds[reqId]) {
+        var typeName = ord_idTypeName_(reqId);
+        idBadge = ' <span style="font-size:10px;font-weight:600;font-family:var(--mono);opacity:.85;">· ' + _e(typeName) + ' ID: ' + _e(ORD.wiz.patientIds[reqId]) + '</span>';
+      }
       return '<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.3);border-radius:20px;font-size:11px;font-weight:700;color:#92400e;">'
         + _e(d.discount_name) + ' · -' + valDisp + idBadge
         + ' <button onclick="ord_removeDiscount(\'' + _e(d.discount_id) + '\')" style="background:none;border:none;cursor:pointer;color:#92400e;font-size:14px;padding:0;line-height:1;">×</button>'
@@ -2421,20 +2521,26 @@
     if (totAmt) totAmt.textContent = ord_peso(total);
   }
 
-  /* ── Auto-apply patient discounts when entering step 2 ── */
+  /* ── Auto-apply patient discounts when entering step 2 ──
+     Silently skips any discount whose required ID type the
+     patient doesn't have on file.  Receptionists can still apply
+     it manually from the dropdown (which prompts for the ID). */
   function ord_autoApplyPatientDiscounts() {
     if (!ORD.wiz.patientDiscountIds.length) return;
     ORD.wiz.patientDiscountIds.forEach(function (did) {
       if (ORD.wiz.appliedDiscounts.some(function (d) { return d.discount_id === did; })) return;
       var d = ORD.wiz.discounts.find(function (x) { return x.discount_id === did; });
       if (!d) return;
+      var reqId = (d.requires_id_type_id || '').trim();
+      if (reqId && !ord_patientHasId_(reqId)) return;  // ID missing — wait for manual apply
       var subtotal = ORD.wiz.items.reduce(function (s, i) { return s + i.unit_fee; }, 0);
       var amt = d.type === 'percentage'
         ? parseFloat((subtotal * d.value / 100).toFixed(2))
         : Math.min(d.value, subtotal);
       ORD.wiz.appliedDiscounts.push({
         discount_id: d.discount_id, discount_name: d.discount_name,
-        type: d.type, value: d.value, amount: amt
+        type: d.type, value: d.value, amount: amt,
+        requires_id_type_id: reqId
       });
     });
   }

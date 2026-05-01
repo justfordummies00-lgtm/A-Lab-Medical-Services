@@ -55,6 +55,7 @@
                   <th>Description</th>
                   <th>Type</th>
                   <th>Value</th>
+                  <th>Required ID</th>
                   <th>Status</th>
                   <th id="discActionsHeader" style="text-align:center;">Actions</th>
                 </tr>
@@ -125,6 +126,16 @@
                 <div id="discValueNote" style="font-size:11px;color:var(--text-4);margin-top:4px;"></div>
               </div>
 
+              <div style="grid-column:1/-1;">
+                <label class="f-label">Required Patient ID <span style="font-size:10px;color:var(--text-4);font-weight:400;">(optional)</span></label>
+                <select id="discFldIdType" class="f-inp">
+                  <option value="">— No ID required —</option>
+                </select>
+                <div style="font-size:11px;color:var(--text-4);margin-top:4px;">
+                  When set, the patient must have this ID on file before the discount can be applied. If missing during an order, the receptionist will be prompted to enter it and it will be saved to the patient profile.
+                </div>
+              </div>
+
             </div>
             <div id="discModalErr" style="display:none;margin-top:14px;font-size:12px;color:var(--danger);background:var(--danger-bg);border:1px solid rgba(239,68,68,.2);border-radius:8px;padding:9px 12px;"></div>
           </div>
@@ -165,14 +176,19 @@
 var DISC = {
   all:       [],
   filtered:  [],
-  editingId: null
+  editingId: null,
+  // Cached non-archived Patient_ID_Types for the modal dropdown.
+  // Loaded once per session on first openModal()/openEdit() and
+  // re-used; the catalog is admin-managed and tiny.
+  idTypes:   null,
+  idTypesById: {}
 };
 var _discDeleteId = null;
 
 /* ── Skeleton ── */
 function disc_skeleton() {
   var row = '<tr>';
-  for (var i = 0; i < 7; i++)
+  for (var i = 0; i < 8; i++)
     row += '<td><div style="height:13px;border-radius:6px;background:linear-gradient(90deg,#f0f2f7 25%,#e4e8f0 50%,#f0f2f7 75%);background-size:400px 100%;animation:shimmer 1.3s infinite;"></div></td>';
   return row + '</tr>' + row + row + row;
 }
@@ -200,15 +216,52 @@ function disc_load() {
       if (icon) icon.style.animation = '';
       if (!r.success) { toast('error', r.message || 'Failed to load.'); return; }
       DISC.all = r.data || [];
-      disc_applyFilter();
+      // Eager-load Patient_ID_Types alongside discounts so the
+      // "Required ID" column can render human-readable names on
+      // first paint instead of raw id_type_id strings.
+      disc_loadIdTypes(disc_applyFilter);
     })
     .withFailureHandler(function(e) {
       if (icon) icon.style.animation = '';
       toast('error', e.message || 'Connection error.');
       document.getElementById('discTableBody').innerHTML =
-        '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--danger);font-size:13px;">Error. <a href="javascript:void(0)" onclick="disc_load()" style="color:var(--teal-600);">Retry</a></td></tr>';
+        '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--danger);font-size:13px;">Error. <a href="javascript:void(0)" onclick="disc_load()" style="color:var(--teal-600);">Retry</a></td></tr>';
     })
     .getDiscounts();
+}
+
+/* ── Load Patient_ID_Types lazily for the modal dropdown ──
+   Cached only on success so a transient failure doesn't poison
+   the rest of the session: DISC.idTypes stays null after a failed
+   fetch, which lets the next disc_load()/openModal() retry. */
+function disc_loadIdTypes(cb) {
+  if (DISC.idTypes !== null) { cb(); return; }
+  google.script.run
+    .withSuccessHandler(function(r) {
+      var list = (r && r.success && Array.isArray(r.data)) ? r.data : [];
+      DISC.idTypes = list.filter(function(t) { return t.is_archived != 1; });
+      DISC.idTypesById = {};
+      DISC.idTypes.forEach(function(t) { DISC.idTypesById[t.id_type_id] = t; });
+      cb();
+    })
+    .withFailureHandler(function() {
+      // Leave DISC.idTypes === null so the next caller retries.
+      // Falling through to cb() still lets the table render with
+      // raw id_type_id strings instead of blocking the page.
+      cb();
+    })
+    .getPatientIdTypes(false);
+}
+
+function disc_populateIdTypeSelect(selectedId) {
+  var sel = document.getElementById('discFldIdType');
+  if (!sel) return;
+  var html = '<option value="">— No ID required —</option>';
+  (DISC.idTypes || []).forEach(function(t) {
+    var sel2 = String(selectedId || '') === String(t.id_type_id) ? ' selected' : '';
+    html += '<option value="' + _e(t.id_type_id) + '"' + sel2 + '>' + _e(t.name) + '</option>';
+  });
+  sel.innerHTML = html;
 }
 
 /* ── Filter + Render ── */
@@ -232,7 +285,7 @@ function disc_render() {
 
   if (!count) {
     document.getElementById('discTableBody').innerHTML =
-      '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-4);font-family:var(--mono);font-size:13px;">No discounts found.</td></tr>';
+      '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-4);font-family:var(--mono);font-size:13px;">No discounts found.</td></tr>';
     return;
   }
 
@@ -247,12 +300,22 @@ function disc_render() {
       ? '<span class="badge badge-blue" style="font-family:var(--mono);">% Percentage</span>'
       : '<span class="badge badge-teal" style="font-family:var(--mono);">₱ Fixed</span>';
 
+    var idTypeName = '';
+    if (d.requires_id_type_id) {
+      var t = DISC.idTypesById && DISC.idTypesById[d.requires_id_type_id];
+      idTypeName = t ? t.name : d.requires_id_type_id;
+    }
+    var idTypeCell = idTypeName
+      ? '<span class="badge" style="background:rgba(180,83,9,.10);color:#92400e;font-family:var(--mono);" title="Patient must have this ID on file">🔑 ' + _e(idTypeName) + '</span>'
+      : '<span style="font-size:11px;color:var(--text-4);">—</span>';
+
     h += '<tr id="disc-row-' + _e(d.discount_id) + '">'
       + '<td><span style="font-family:var(--mono);font-size:11px;color:var(--text-3);">' + _e(d.discount_id) + '</span></td>'
       + '<td><span style="font-weight:700;color:var(--text-1);">' + _e(d.discount_name) + '</span></td>'
       + '<td style="font-size:12px;color:var(--text-3);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="' + _e(d.description||'') + '">' + _e(d.description || '—') + '</td>'
       + '<td>' + typeBadge + '</td>'
       + '<td>' + valDisplay + '</td>'
+      + '<td>' + idTypeCell + '</td>'
       + '<td><span class="badge ' + (isActive ? 'badge-green' : 'badge-gray') + '" style="font-family:var(--mono);">' + (isActive ? '● Active' : '○ Inactive') + '</span></td>'
       + '<td style="text-align:center;">'
         + (isSA
@@ -315,6 +378,14 @@ function disc_openModal() {
   document.querySelector('input[name="discType"][value="percentage"]').checked = true;
   disc_onTypeChange();
   disc_hideModalErr();
+  // Populate the ID-type dropdown asynchronously — the modal is
+  // shown immediately with just the placeholder option, then the
+  // real list streams in.  This also caches the catalog so the
+  // table can render human-readable type names.
+  disc_loadIdTypes(function() {
+    disc_populateIdTypeSelect('');
+    disc_render();
+  });
   document.getElementById('discModal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('discFldName').focus(); }, 80);
 }
@@ -333,6 +404,9 @@ function disc_openEdit(id) {
   document.querySelector('input[name="discType"][value="' + (d.type||'percentage') + '"]').checked = true;
   disc_onTypeChange();
   disc_hideModalErr();
+  disc_loadIdTypes(function() {
+    disc_populateIdTypeSelect(d.requires_id_type_id || '');
+  });
   document.getElementById('discModal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('discFldName').focus(); }, 80);
 }
@@ -357,14 +431,32 @@ function disc_save() {
   if (isNaN(val) || val < 0) { disc_showModalErr('Valid value is required.'); return; }
   if (type === 'percentage' && val > 100) { disc_showModalErr('Percentage cannot exceed 100.'); return; }
 
-  var payload  = { discount_id: DISC.editingId || '', discount_name: name, description: desc, type: type, value: val };
+  var idTypeSel = document.getElementById('discFldIdType');
+  var requiresIdTypeId = idTypeSel ? (idTypeSel.value || '').trim() : '';
+
+  var payload  = {
+    discount_id: DISC.editingId || '',
+    discount_name: name,
+    description: desc,
+    type: type,
+    value: val,
+    requires_id_type_id: requiresIdTypeId
+  };
   var snapshot = JSON.parse(JSON.stringify(DISC.all));
 
   if (isEdit) {
     var idx = DISC.all.findIndex(function(d){ return d.discount_id === DISC.editingId; });
-    if (idx !== -1) DISC.all[idx] = Object.assign({}, DISC.all[idx], { discount_name: name, description: desc, type: type, value: val });
+    if (idx !== -1) DISC.all[idx] = Object.assign({}, DISC.all[idx], {
+      discount_name: name, description: desc, type: type, value: val,
+      requires_id_type_id: requiresIdTypeId
+    });
   } else {
-    DISC.all.unshift({ discount_id: 'DISC-PENDING', discount_name: name, description: desc, type: type, value: val, is_active: 1, created_at: new Date().toISOString() });
+    DISC.all.unshift({
+      discount_id: 'DISC-PENDING', discount_name: name, description: desc,
+      type: type, value: val, is_active: 1,
+      requires_id_type_id: requiresIdTypeId,
+      created_at: new Date().toISOString()
+    });
   }
 
   disc_applyFilter();
@@ -385,6 +477,8 @@ function disc_save() {
           document.getElementById('discFldValue').value = val;
           document.querySelector('input[name="discType"][value="' + type + '"]').checked = true;
           disc_onTypeChange();
+          // Restore the receptionist's ID-type pick on retry.
+          disc_loadIdTypes(function() { disc_populateIdTypeSelect(requiresIdTypeId); });
           disc_showModalErr(r.message || 'Failed. Please try again.');
         }, 200);
         return;
