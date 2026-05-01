@@ -255,11 +255,14 @@ function createLabService(payload) {
 
     const servId = 'SERV-' + Math.random().toString(16).substr(2, 8).toUpperCase();
 
-    // Dynamically derive type by Category->Department
+    // Dynamically derive type by Category->Department.
+    // getCategories() returns a raw array, getDepartments() wraps in
+    // { success, data } — unwrap the latter before .find().
     const allCats = getCategories();
     const catData = allCats.find(c => String(c.cat_id).trim() === String(payload.cat_id).trim());
     const deptId = catData ? String(catData.dept_id).trim() : null;
-    const allDepts = getDepartments();
+    const deptResp = getDepartments();
+    const allDepts = (deptResp && deptResp.data) || [];
     const deptData = allDepts.find(d => String(d.dept_id).trim() === deptId);
     const derivedType = deptData ? deptData.department_type : 'lab';
     const isCon = derivedType === 'consultation' ? 1 : 0;
@@ -322,11 +325,13 @@ function updateLabService(payload) {
     const createdAt = existing[7] || new Date();
     const isActive = existing[6];
 
-    // Dynamically derive type
+    // Dynamically derive type — unwrap getDepartments() the same
+    // way createLabService does.
     const allCats = getCategories();
     const catData = allCats.find(c => String(c.cat_id).trim() === String(payload.cat_id).trim());
     const deptId = catData ? String(catData.dept_id).trim() : null;
-    const allDepts = getDepartments();
+    const deptResp = getDepartments();
+    const allDepts = (deptResp && deptResp.data) || [];
     const deptData = allDepts.find(d => String(d.dept_id).trim() === deptId);
     const derivedType = deptData ? deptData.department_type : 'lab';
     const isCon = derivedType === 'consultation' ? 1 : 0;
