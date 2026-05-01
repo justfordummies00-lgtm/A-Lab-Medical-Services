@@ -230,9 +230,12 @@ function disc_load() {
     .getDiscounts();
 }
 
-/* ── Load Patient_ID_Types lazily for the modal dropdown ── */
+/* ── Load Patient_ID_Types lazily for the modal dropdown ──
+   Cached only on success so a transient failure doesn't poison
+   the rest of the session: DISC.idTypes stays null after a failed
+   fetch, which lets the next disc_load()/openModal() retry. */
 function disc_loadIdTypes(cb) {
-  if (DISC.idTypes) { cb(); return; }
+  if (DISC.idTypes !== null) { cb(); return; }
   google.script.run
     .withSuccessHandler(function(r) {
       var list = (r && r.success && Array.isArray(r.data)) ? r.data : [];
@@ -242,7 +245,9 @@ function disc_loadIdTypes(cb) {
       cb();
     })
     .withFailureHandler(function() {
-      DISC.idTypes = [];
+      // Leave DISC.idTypes === null so the next caller retries.
+      // Falling through to cb() still lets the table render with
+      // raw id_type_id strings instead of blocking the page.
       cb();
     })
     .getPatientIdTypes(false);
