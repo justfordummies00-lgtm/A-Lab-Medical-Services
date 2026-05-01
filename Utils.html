@@ -284,7 +284,7 @@ function mountApp(silent) {
 /* ─── LOGOUT ─── */
 function doLogout() {
   APP.user = null;
-  try { if (typeof Live !== 'undefined') Live.stop(); } catch(e) {}
+  try { if (typeof Live !== 'undefined') Live.reset(); } catch(e) {}
   try { sessionStorage.removeItem('alab_user'); } catch(e) {}
 
   // Reset all module states so they re-fetch fresh on next login
@@ -317,97 +317,38 @@ function doLogout() {
 }
 
 /* ───────────────────────────────────────────────────────────
- * LIVE — stale-while-revalidate + silent background polling
+ * LIVE — stale-while-revalidate (SWR) on page revisit
  *
- * Two distinct UX wins:
+ * When the user clicks back to a sidebar page they have already
+ * loaded once during this session, we DON'T re-show the loading
+ * spinner — the previously-rendered table / cards / dashboard
+ * stays on screen immediately, then the loader runs in the
+ * background and quietly replaces the data when the fetch
+ * resolves.  No blank screen, no skeleton flicker.
  *
- *   (1) SWR (instant page revisit)
- *       When the user clicks back to a sidebar page they
- *       loaded recently, we DON'T re-show the loading
- *       spinner — they see the previously-rendered table /
- *       cards / dashboard immediately, then the loader runs
- *       in the background and quietly replaces the data.
+ * Implementation contract for page loaders (*_load / *_init):
+ *   • Each loader checks APP.silentRefresh.
+ *   • When true, the loader SKIPS showing "Loading…" /
+ *     skeleton rows and keeps the existing rendered DOM in
+ *     place until the fetch resolves.
+ *   • When false (first visit, manual Refresh button, or
+ *     post-write refresh), the loader behaves as before.
  *
- *   (2) Silent polling (auto-refresh)
- *       For real-time pages (orders, patients, results,
- *       receptionist/tech/liaison dashboards), the active
- *       page silently re-fetches its data every 30s so a
- *       receptionist's new order shows up in a tech's queue
- *       without anyone clicking "Refresh".
- *
- * Guard rails (so we never overwrite a form a user is filling):
- *   • Polling pauses when document.hidden = true.
- *   • Polling pauses when ANY modal is open
- *     (.modal.show OR .modal[style*="display: flex"]).
- *   • Polling only runs for the currently-active page.
- *   • Loaders that respect APP.silentRefresh skip showing
- *     "Loading…" UI; loaders that don't will only flicker
- *     briefly, which is harmless.
+ * NOTE: This file used to also implement a 30s background
+ * polling refresh on "live" pages.  That was removed because
+ * users found the auto-refresh disorienting while reading
+ * mid-page.  Operational data (orders, patients, results) is
+ * still re-fetched on every navigation/manual refresh.
  * ─────────────────────────────────────────────────────────── */
 APP.silentRefresh = false;
 
 var Live = (function(){
-  var POLL_MS = 30000;          // refresh every 30s on live pages
-  var SWR_MS  = 8000;           // re-render cached DOM if loaded < 8s ago
-  var lastLoaded = {};          // page → timestamp of last load
-  var pollTimer  = null;
-  var currentPage = null;
-
-  // Pages that should auto-refresh in the background.
-  // Catalog pages (branches, departments, doctors, etc.) are
-  // not in this list — they cache server-side and bust on writes.
-  var LIVE_PAGES = {
-    'dashboard':            true,
-    'tech-dashboard':       true,
-    'tech-queue':           true,
-    'rec-dashboard':        true,
-    'liaison-dashboard':    true,
-    'doctor-dashboard':     true,
-    'lab-results-preview':  true,
-    'orders':               true,
-    'patients':             true,
-    'my-referrals':         true,
-    'my-patients':          true,
-    'consultations':        true
-  };
-
-  function modalOpen() {
-    var els = document.querySelectorAll('.modal.show, .modal.active');
-    if (els && els.length) return true;
-    var styled = document.querySelectorAll('.modal');
-    for (var i = 0; i < styled.length; i++) {
-      var d = (styled[i].style && styled[i].style.display) || '';
-      if (d === 'flex' || d === 'block') return true;
-    }
-    return false;
-  }
-
-  function callLoader(page, silent) {
-    APP.silentRefresh = !!silent;
-    try { _runLoader(page); } catch (e) { console.warn('Live loader error:', e); }
-    APP.silentRefresh = false;
-    lastLoaded[page] = Date.now();
-  }
-
-  function tick() {
-    if (!currentPage) return;
-    if (document.hidden) return;
-    if (modalOpen()) return;
-    if (!LIVE_PAGES[currentPage]) return;
-    callLoader(currentPage, true);
-  }
-
-  function start(page) {
-    currentPage = page;
-    stop(); // clear any previous timer
-    if (LIVE_PAGES[page]) {
-      pollTimer = setInterval(tick, POLL_MS);
-    }
-  }
-
-  function stop() {
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-  }
+  // 5 minute freshness window — within this, navigating back to
+  // a page does a silent refresh instead of flashing a spinner.
+  // Beyond this, we fall back to a full reload to avoid showing
+  // very stale data on screen.
+  var SWR_MS  = 300000;
+  var lastLoaded = {};
 
   function isFresh(page) {
     var t = lastLoaded[page];
@@ -416,39 +357,42 @@ var Live = (function(){
 
   function markLoaded(page) { lastLoaded[page] = Date.now(); }
 
-  // Defined below — set up after DOMContentLoaded just in case.
-  document.addEventListener('visibilitychange', function(){
-    if (!document.hidden) tick(); // refresh once on tab focus
-  });
+  // Clear all freshness timestamps (called on logout).
+  function reset() { lastLoaded = {}; }
 
-  return { start: start, stop: stop, isFresh: isFresh, markLoaded: markLoaded };
+  return { isFresh: isFresh, markLoaded: markLoaded, reset: reset };
 })();
 
-// Dispatcher used by Live.tick() and navigateTo().  Defined as a
-// separate function so navigateTo() and the polling timer share
-// the exact same routing logic.
+// Dispatcher used by navigateTo().  Per-page routing kept in one
+// place so the SWR fast path and the cold-load path agree.
 function _runLoader(page) {
   // ── SILENT-REFRESH FAST PATH ──────────────────────────────
-  // The 30s polling timer reuses this dispatcher, but the
-  // module-level *_init() loaders below RESET page-local state
-  // (branch picker, filters, search box, current page index).
-  // That wiped the SA's branch selection on Orders / Patients
-  // when the polling timer fired mid-task.
-  //
-  // For silent refreshes we instead call the re-fetch-only loader
-  // that preserves user state.  We only do this if the page is
-  // already initialized (branchId set); otherwise we fall through
-  // to the *_init() path so the picker still gets built.
+  // The module-level *_init() loaders below RESET page-local
+  // state (branch picker, filters, search box, current page
+  // index).  On a SWR navigation (revisit within the freshness
+  // window) we instead call the re-fetch-only *_load() so the
+  // user's current selection / filter is preserved.  We only do
+  // this if the page is already initialized (branchId set);
+  // otherwise we fall through to the *_init() path so the
+  // picker still gets built.
   if (APP.silentRefresh) {
     if (page === 'orders' && typeof ORD !== 'undefined' && ORD.branchId &&
         typeof ord_load === 'function') return ord_load();
     if (page === 'patients' && typeof PAT !== 'undefined' && PAT.branchId &&
         typeof pat_load === 'function') {
-      // If the user is mid cross-branch search, don't second-guess
-      // them — leave the current results on screen.
       if (PAT._crossBranch) return;
       return pat_load();
     }
+    if (page === 'reports' && typeof RPT !== 'undefined' && RPT.data !== null &&
+        typeof rpt_load === 'function') return rpt_load();
+    if (page === 'my-referrals' && typeof REF !== 'undefined' && REF.loaded &&
+        typeof ref_load === 'function') return ref_load();
+    if (page === 'my-patients' && typeof MYPAT !== 'undefined' && MYPAT.all && MYPAT.all.length &&
+        typeof mypat_load === 'function') return mypat_load();
+    if (page === 'consultations' && typeof CON !== 'undefined' && CON.orders && CON.orders.length &&
+        typeof con_load === 'function') return con_load();
+    if (page === 'lab-results-preview' && typeof LRP !== 'undefined' && LRP.allOrders && LRP.allOrders.length &&
+        typeof lrp_refresh === 'function') return lrp_refresh();
   }
   if (page === 'dashboard'         && typeof dash_init     === 'function') return dash_init();
   if (page === 'tech-dashboard'    && typeof techdash_load === 'function') return techdash_load();
@@ -523,7 +467,6 @@ function navigateTo(page) {
     _runLoader(page);
   }
   Live.markLoaded(page);
-  Live.start(page);
 }
 
 /* ─── SIDEBAR ─── */

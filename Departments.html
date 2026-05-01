@@ -242,10 +242,13 @@ function dept_load() {
     }
   }
 
+  var silent = !!(DEPT.all && DEPT.all.length && APP.silentRefresh);
   var icon = document.getElementById('deptRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('deptSubtitle').textContent = 'Loading…';
-  document.getElementById('deptTableBody').innerHTML  = dept_skeleton();
+  if (!silent) {
+    document.getElementById('deptSubtitle').textContent = 'Loading…';
+    document.getElementById('deptTableBody').innerHTML  = dept_skeleton();
+  }
 
   if (isSA) {
     // Super Admin — full master catalog

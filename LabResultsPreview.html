@@ -327,8 +327,9 @@ function lrp_init() {
 }
 
 function lrp_refresh() {
+  var silent = !!(LRP.allOrders && LRP.allOrders.length && APP.silentRefresh);
   var list = document.getElementById('lrpOrderList');
-  if (list) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-4);font-size:12px;">Loading...</div>';
+  if (list && !silent) list.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-4);font-size:12px;">Loading...</div>';
 
   google.script.run
     .withSuccessHandler(function(r) {

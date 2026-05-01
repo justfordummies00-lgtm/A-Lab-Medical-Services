@@ -332,12 +332,15 @@ function techdash_load() {
   if (heroName)  heroName.textContent  = (APP.user && APP.user.display_name) ? APP.user.display_name : 'Welcome back';
   if (heroDate)  heroDate.textContent  = new Date().toLocaleDateString('en-PH', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
 
-  // Stats skeleton
-  ['techStatPaid','techStatInProg','techStatForRel','techStatRelToday','techStatTotal']
-    .forEach(function(id){ var el=document.getElementById(id); if(el) el.textContent='…'; });
+  // Stats skeleton (skip on SWR to avoid flicker)
+  var silent = !!(TDASH.allOrders && TDASH.allOrders.length && APP.silentRefresh);
+  if (!silent) {
+    ['techStatPaid','techStatInProg','techStatForRel','techStatRelToday','techStatTotal']
+      .forEach(function(id){ var el=document.getElementById(id); if(el) el.textContent='…'; });
+  }
 
   var qList = document.getElementById('techQueueList');
-  if (qList) {
+  if (qList && !silent) {
     qList.innerHTML = '<div style="padding:16px 12px;display:flex;flex-direction:column;gap:10px;">' +
       [1,2,3,4].map(function(){ return '<div style="padding:12px 14px;border:1px solid rgba(0,0,0,.05);border-radius:6px;background:var(--white);box-shadow:0 1px 2px rgba(0,0,0,.02);">' +
         '<div style="display:flex;justify-content:space-between;margin-bottom:8px;"><div class="tech-skel" style="height:12px;width:110px;border-radius:4px;"></div><div class="tech-skel" style="height:14px;width:55px;border-radius:10px;"></div></div>' +

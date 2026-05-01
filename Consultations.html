@@ -107,9 +107,12 @@ function con_init() {
 }
 
 function con_load() {
-  document.getElementById('conOrderList').innerHTML =
-    '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">' +
-    '<span class="spinner spinner-teal" style="display:inline-block;margin-bottom:8px;"></span><br>Loading…</div>';
+  var silent = !!(CON.orders && CON.orders.length && APP.silentRefresh);
+  if (!silent) {
+    document.getElementById('conOrderList').innerHTML =
+      '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">' +
+      '<span class="spinner spinner-teal" style="display:inline-block;margin-bottom:8px;"></span><br>Loading…</div>';
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

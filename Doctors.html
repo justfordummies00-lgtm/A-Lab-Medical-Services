@@ -185,13 +185,18 @@ function dr_skeleton() {
 function dr_load() {
   var branchIds = APP.user && APP.user.role !== 'Super Admin'
     ? (APP.user.branch_ids || '') : '';
+  var silent = !!(DR.all && DR.all.length && APP.silentRefresh);
 
-  DR.all      = [];
-  DR.filtered = [];
+  if (!silent) {
+    DR.all      = [];
+    DR.filtered = [];
+  }
   var icon = document.getElementById('drRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('drSubtitle').textContent = 'Loading…';
-  document.getElementById('drTableBody').innerHTML  = dr_skeleton();
+  if (!silent) {
+    document.getElementById('drSubtitle').textContent = 'Loading…';
+    document.getElementById('drTableBody').innerHTML  = dr_skeleton();
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

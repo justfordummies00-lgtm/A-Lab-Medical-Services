@@ -313,12 +313,15 @@ function pkg_load() {
   // Always hide SA branch packages view on load — shown only after data confirmed
   if (saBranchView) saBranchView.style.display = 'none';
 
+  var silent = !!(PKG.all && PKG.all.length && APP.silentRefresh);
   var icon = document.getElementById('pkgRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('pkgSubtitle').textContent = 'Loading…';
+  if (!silent) {
+    document.getElementById('pkgSubtitle').textContent = 'Loading…';
+  }
 
   if (isSA) {
-    document.getElementById('pkgTableBody').innerHTML = pkg_skeleton(6);
+    if (!silent) document.getElementById('pkgTableBody').innerHTML = pkg_skeleton(6);
     var showArchived = document.getElementById('pkgShowArchived') && document.getElementById('pkgShowArchived').checked;
     google.script.run
       .withSuccessHandler(function(r) {
@@ -373,8 +376,10 @@ function pkg_load() {
         .getBranchesForPatientView(branchId);
     }
 
-    document.getElementById('pkgGlobalBody').innerHTML = pkg_skeleton(4);
-    document.getElementById('pkgBranchBody').innerHTML = pkg_skeleton(4);
+    if (!silent) {
+      document.getElementById('pkgGlobalBody').innerHTML = pkg_skeleton(4);
+      document.getElementById('pkgBranchBody').innerHTML = pkg_skeleton(4);
+    }
 
     google.script.run
       .withSuccessHandler(function(r) {

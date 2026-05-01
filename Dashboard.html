@@ -175,12 +175,15 @@ function dash_init() {
   if (!APP.user) return;
   var isSA = APP.user.role === 'Super Admin';
   var branchId = isSA ? '' : APP.user.branch_ids;
+  var silent = !!(typeof APP !== 'undefined' && APP.silentRefresh);
 
-  // Set loading states
-  document.getElementById('dashOrdersToday').textContent = '...';
-  document.getElementById('dashCompletedOrders').textContent = '...';
-  document.getElementById('dashPendingOrders').textContent = '...';
-  document.getElementById('dashRevenueToday').textContent = '...';
+  // Set loading states (skip on silent refresh to avoid stat flicker)
+  if (!silent) {
+    document.getElementById('dashOrdersToday').textContent = '...';
+    document.getElementById('dashCompletedOrders').textContent = '...';
+    document.getElementById('dashPendingOrders').textContent = '...';
+    document.getElementById('dashRevenueToday').textContent = '...';
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

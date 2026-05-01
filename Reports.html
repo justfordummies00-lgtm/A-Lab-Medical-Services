@@ -427,12 +427,15 @@ function rpt_load() {
   var from = document.getElementById('rptDateFrom').value;
   var to   = document.getElementById('rptDateTo').value;
   if (!from || !to) return;
+  var silent = !!(RPT.data !== null && APP.silentRefresh);
 
-  document.getElementById('rptLoading').style.display = '';
-  document.getElementById('rptEmpty').style.display   = 'none';
-  document.getElementById('rptBody').style.display    = 'none';
-  document.getElementById('rptExportBtn').style.display = 'none';
-  document.getElementById('rptPrintBtn').style.display  = 'none';
+  if (!silent) {
+    document.getElementById('rptLoading').style.display = '';
+    document.getElementById('rptEmpty').style.display   = 'none';
+    document.getElementById('rptBody').style.display    = 'none';
+    document.getElementById('rptExportBtn').style.display = 'none';
+    document.getElementById('rptPrintBtn').style.display  = 'none';
+  }
 
   var fn = (!RPT.isSA || RPT.branchId)
     ? function() {

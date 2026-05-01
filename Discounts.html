@@ -187,10 +187,13 @@ function disc_load() {
   if (baNote) baNote.style.display  = !isSA ? 'flex' : 'none';
   if (actHdr) actHdr.style.display  = isSA ? '' : 'none';
 
+  var silent = !!(DISC.all && DISC.all.length && APP.silentRefresh);
   var icon = document.getElementById('discRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('discSubtitle').textContent = 'Loading…';
-  document.getElementById('discTableBody').innerHTML  = disc_skeleton();
+  if (!silent) {
+    document.getElementById('discSubtitle').textContent = 'Loading…';
+    document.getElementById('discTableBody').innerHTML  = disc_skeleton();
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

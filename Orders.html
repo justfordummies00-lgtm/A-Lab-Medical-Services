@@ -1369,10 +1369,8 @@
     if (!ORD.branchId) return;
     // A refresh is silent whenever there is already a rendered table
     // on screen — regardless of whether it was triggered by the
-    // polling timer, the manual Refresh button, or a SWR navigation.
-    // Only the very first load (ORD.all empty) shows the skeleton +
-    // "Loading…".  The polling timer also force-sets APP.silentRefresh
-    // = true as a belt-and-suspenders.
+    // manual Refresh button or a SWR navigation.  Only the very first
+    // load (ORD.all empty) shows the skeleton + "Loading…".
     var hasRenderedData = !!(ORD.all && ORD.all.length);
     var silent = hasRenderedData ||
                  !!(typeof APP !== 'undefined' && APP.silentRefresh);

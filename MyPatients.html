@@ -75,11 +75,14 @@ function mypat_init() {
 function mypat_load() {
   var doctorId = APP.user ? APP.user.admin_id : '';
   if (!doctorId) return;
+  var silent = !!(MYPAT.all && MYPAT.all.length && APP.silentRefresh);
   var icon = document.getElementById('mypatRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('mypatTableCard').style.display  = '';
-  document.getElementById('mypatTableBody').innerHTML      = mypat_skeleton();
-  document.getElementById('mypatEmptyState').style.display = 'none';
+  if (!silent) {
+    document.getElementById('mypatTableCard').style.display  = '';
+    document.getElementById('mypatTableBody').innerHTML      = mypat_skeleton();
+    document.getElementById('mypatEmptyState').style.display = 'none';
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {
