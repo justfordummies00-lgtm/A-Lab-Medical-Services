@@ -1528,8 +1528,11 @@ function techdash_saveToDrive() {
           if (x.url) bits.push('<a href="' + _e(x.url) + '" target="_blank" class="btn btn-secondary btn-sm">' + _e(x.serv_name || 'X-Ray') + ' .docx</a>');
         });
         var errMsg = '';
-        if (r.errors && r.errors.length) {
-          errMsg = '<div style="margin-top:6px;color:var(--warning);font-size:11px;">⚠ ' + _e(r.errors.join('; ')) + '</div>';
+        if ((r.xray_errors && r.xray_errors.length) || r.lab_error) {
+          var errParts = [];
+          if (r.lab_error) errParts.push('Lab: ' + r.lab_error);
+          (r.xray_errors || []).forEach(function(xe) { if (xe && xe.message) errParts.push((xe.serv_name || 'X-Ray') + ': ' + xe.message); });
+          errMsg = '<div style="margin-top:6px;color:var(--warning);font-size:11px;">⚠ ' + _e(errParts.join('; ')) + '</div>';
         }
         resDiv.style.display = '';
         resDiv.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--text-2);">'

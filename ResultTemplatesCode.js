@@ -1416,7 +1416,9 @@ function generateOrderResultDrive(branchId, orderId, encodedBy) {
 
     // Loop the RESULT_ITEMS rows where unit is XRAY_DOCX/XRAY_PDF.
     var rCols = Math.max(itemsSh.getLastColumn(), 14);
-    var rRows = itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, rCols).getValues();
+    var rRows = itemsSh.getLastRow() >= 2
+      ? itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, rCols).getValues()
+      : [];
     rRows.forEach(function (r) {
       if (String(r[1]).trim() !== orderId) return;
       var unit = String(r[5]).trim();
