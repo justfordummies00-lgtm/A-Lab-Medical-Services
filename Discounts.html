@@ -404,8 +404,33 @@ function disc_openEdit(id) {
   document.querySelector('input[name="discType"][value="' + (d.type||'percentage') + '"]').checked = true;
   disc_onTypeChange();
   disc_hideModalErr();
+
+  // Pre-seed the ID-type dropdown with the existing value BEFORE
+  // the modal is shown.  Without this, a quick Save fired before
+  // disc_loadIdTypes resolves would read the dropdown as '' and
+  // silently strip the discount's required-ID requirement on the
+  // server (server preserves only when the field is undefined).
+  // If the catalog is already cached we use the friendly name;
+  // otherwise we fall back to the raw id_type_id so the option
+  // still has the correct value.
+  var existing = d.requires_id_type_id || '';
+  var sel = document.getElementById('discFldIdType');
+  if (sel) {
+    if (existing) {
+      var label = (DISC.idTypesById && DISC.idTypesById[existing] && DISC.idTypesById[existing].name)
+        ? DISC.idTypesById[existing].name
+        : existing;
+      sel.innerHTML =
+        '<option value="">\u2014 No ID required \u2014</option>' +
+        '<option value="' + _e(existing) + '" selected>' + _e(label) + '</option>';
+    } else {
+      sel.innerHTML = '<option value="">\u2014 No ID required \u2014</option>';
+    }
+  }
+
+  // Async: replace the seed with the full catalog when it arrives.
   disc_loadIdTypes(function() {
-    disc_populateIdTypeSelect(d.requires_id_type_id || '');
+    disc_populateIdTypeSelect(existing);
   });
   document.getElementById('discModal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('discFldName').focus(); }, 80);
