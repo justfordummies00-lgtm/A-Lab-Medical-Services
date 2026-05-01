@@ -413,10 +413,13 @@
       }
     }
 
+    var silent = !!(LS.all && LS.all.length && APP.silentRefresh);
     var icon = document.getElementById('lsRefreshIcon');
     if (icon) icon.style.animation = 'spin .8s linear infinite';
-    document.getElementById('lsSubtitle').textContent = 'Loading…';
-    document.getElementById('lsTableBody').innerHTML = ls_skeleton(isSA ? 8 : 3);
+    if (!silent) {
+      document.getElementById('lsSubtitle').textContent = 'Loading…';
+      document.getElementById('lsTableBody').innerHTML = ls_skeleton(isSA ? 8 : 3);
+    }
 
     if (isSA) {
       google.script.run

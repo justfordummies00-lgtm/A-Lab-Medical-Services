@@ -108,11 +108,14 @@ function ref_init() {
 function ref_load() {
   var doctorId = APP.user ? APP.user.admin_id : '';
   if (!doctorId) return;
+  var silent = !!(REF.all && REF.all.length && APP.silentRefresh);
   var icon = document.getElementById('refRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('refTableCard').style.display  = '';
-  document.getElementById('refTableBody').innerHTML      = ref_skeleton();
-  document.getElementById('refEmptyState').style.display = 'none';
+  if (!silent) {
+    document.getElementById('refTableCard').style.display  = '';
+    document.getElementById('refTableBody').innerHTML      = ref_skeleton();
+    document.getElementById('refEmptyState').style.display = 'none';
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

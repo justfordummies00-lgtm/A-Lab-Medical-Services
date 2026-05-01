@@ -472,11 +472,9 @@ function pat_onBranchChange() {
 function pat_load() {
   if (!PAT.branchId) return;
   // A refresh is silent whenever there is already a rendered table on
-  // screen — regardless of whether it was triggered by the polling
-  // timer, the manual Refresh button, or a SWR navigation.  Only the
-  // very first load (PAT.all empty) shows the skeleton + "Loading…".
-  // The polling timer also force-sets APP.silentRefresh=true as a
-  // belt-and-suspenders.
+  // screen — regardless of whether it was triggered by the manual
+  // Refresh button or a SWR navigation.  Only the very first load
+  // (PAT.all empty) shows the skeleton + "Loading…".
   var hasRenderedData = !!(PAT.all && PAT.all.length);
   var silent = hasRenderedData ||
                !!(typeof APP !== 'undefined' && APP.silentRefresh);
@@ -501,8 +499,8 @@ function pat_load() {
     .withSuccessHandler(function(r) {
       if (icon) icon.style.animation = '';
       if (!r.success) {
-        // Silent (background) refresh: keep the user's current table
-        // visible on a transient error.  The next 30s tick will retry.
+        // Silent refresh: keep the user's current table visible on
+        // a transient error.  A manual refresh or next navigation retry.
         if (silent) return;
         document.getElementById('patTableCard').style.display  = 'none';
         document.getElementById('patEmptyState').style.display = '';

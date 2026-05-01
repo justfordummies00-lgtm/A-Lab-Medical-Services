@@ -99,12 +99,17 @@ function liaisondash_load() {
   LIA.branchId = APP.user.branch_ids ? APP.user.branch_ids.split(',')[0].trim() : '';
   if (!LIA.branchId) return;
 
-  LIA.selectedOrderId = null;
-  lia_resetChecklist();
+  var silent = !!(LIA.orders && LIA.orders.length && APP.silentRefresh);
+  if (!silent) {
+    LIA.selectedOrderId = null;
+    lia_resetChecklist();
+  }
 
-  document.getElementById('liaQueueList').innerHTML =
-    '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">' +
-    '<span class="spinner spinner-teal" style="display:inline-block;margin-bottom:8px;"></span><br>Loading queue…</div>';
+  if (!silent) {
+    document.getElementById('liaQueueList').innerHTML =
+      '<div style="text-align:center;padding:32px;color:var(--text-4);font-size:13px;">' +
+      '<span class="spinner spinner-teal" style="display:inline-block;margin-bottom:8px;"></span><br>Loading queue…</div>';
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

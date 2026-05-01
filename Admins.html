@@ -191,10 +191,13 @@ function adm_skeleton() {
 
 /* ── Load ── */
 function adm_load() {
+  var silent = !!(ADM.all && ADM.all.length && APP.silentRefresh);
   var icon = document.getElementById('admRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('admSubtitle').textContent = 'Loading…';
-  document.getElementById('admTableBody').innerHTML  = adm_skeleton();
+  if (!silent) {
+    document.getElementById('admSubtitle').textContent = 'Loading…';
+    document.getElementById('admTableBody').innerHTML  = adm_skeleton();
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {

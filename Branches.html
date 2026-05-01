@@ -202,11 +202,14 @@ function br_skeleton() {
 function br_load() {
   var isSA      = APP.user && APP.user.role === 'Super Admin';
   var branchIds = isSA ? '' : (APP.user && APP.user.branch_ids || '');
+  var silent = !!(BR.all && BR.all.length && APP.silentRefresh);
 
   var icon = document.getElementById('brRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('brSubtitle').textContent = 'Loading…';
-  document.getElementById('brTableBody').innerHTML  = br_skeleton();
+  if (!silent) {
+    document.getElementById('brSubtitle').textContent = 'Loading…';
+    document.getElementById('brTableBody').innerHTML  = br_skeleton();
+  }
 
   // Hide Add Branch button for Branch Admin
   var addBtnWrap = document.getElementById('brAddBtnArea');

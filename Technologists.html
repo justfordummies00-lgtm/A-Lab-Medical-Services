@@ -215,12 +215,17 @@ function tech_load() {
   if (saNote) saNote.style.display = isSA ? 'flex' : 'none';
   if (actHdr) actHdr.style.display = isBA ? '' : 'none';
 
-  TECH.all      = [];
-  TECH.filtered = [];
+  var silent = !!(TECH.all && TECH.all.length && APP.silentRefresh);
+  if (!silent) {
+    TECH.all      = [];
+    TECH.filtered = [];
+  }
   var icon = document.getElementById('techRefreshIcon');
   if (icon) icon.style.animation = 'spin .8s linear infinite';
-  document.getElementById('techSubtitle').textContent = 'Loading…';
-  document.getElementById('techTableBody').innerHTML  = tech_skeleton();
+  if (!silent) {
+    document.getElementById('techSubtitle').textContent = 'Loading…';
+    document.getElementById('techTableBody').innerHTML  = tech_skeleton();
+  }
 
   google.script.run
     .withSuccessHandler(function(r) {
