@@ -107,7 +107,6 @@
             <th>Type</th>
             <th>Specimen</th>
             <th>PhilHealth</th>
-            <th>Template URL</th>
             <th style="text-align:center;">Actions</th>
           </tr>
         </thead>
@@ -210,12 +209,6 @@
           </div>
         </div>
 
-
-        <div style="grid-column:1/-1;">
-          <label class="f-label">Sheet Template URL <span style="font-size:10px;color:var(--text-4);font-weight:400;">(optional — MedTech only)</span></label>
-          <input type="url" id="lsFldTemplateUrl" class="f-inp" placeholder="https://docs.google.com/spreadsheets/d/…" style="font-size:12px;font-family:var(--mono);">
-          <div style="font-size:11px;color:var(--text-4);margin-top:5px;">Paste a Google Sheets URL. Technologists can generate a patient-filled copy from the Lab Queue.</div>
-        </div>
 
         <div style="grid-column:1/-1;" id="lsNewServNote">
           <div
@@ -439,7 +432,7 @@
           if (icon) icon.style.animation = '';
           toast('error', e.message || 'Connection error.');
           document.getElementById('lsTableBody').innerHTML =
-            '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--danger);font-size:13px;">Error. <a href="javascript:void(0)" onclick="ls_load()" style="color:var(--teal-600);">Retry</a></td></tr>';
+            '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--danger);font-size:13px;">Error. <a href="javascript:void(0)" onclick="ls_load()" style="color:var(--teal-600);">Retry</a></td></tr>';
         })
         .getLabServices();
     } else {
@@ -626,7 +619,7 @@
 
       // Category header row
       h += '<tr style="background:var(--gray-50);cursor:pointer;" onclick="ls_toggleCat(\'' + _e(key) + '\')">'
-        + '<td colspan="7" style="padding:10px 14px;">'
+        + '<td colspan="6" style="padding:10px 14px;">'
         + '<div style="display:flex;align-items:center;gap:8px;">'
         + '<span style="color:var(--teal-600);display:flex;align-items:center;">' + chevron + '</span>'
         + '<svg width="13" height="13" fill="none" stroke="var(--teal-600)" viewBox="0 0 24 24" style="flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z"/></svg>'
@@ -654,20 +647,13 @@
             ? '<span class="badge badge-teal" style="font-family:var(--mono);">✓ Covered</span>'
             : '<span class="badge badge-gray" style="font-family:var(--mono);">✗ No</span>')
           + '</td>'
-          + '<td style="min-width:200px;max-width:280px;padding:8px 10px;" onclick="event.stopPropagation()">'
-          + '<div style="display:flex;gap:4px;align-items:center;">'
-          + '<input type="url" id="ls-tpl-' + _e(s.serv_id) + '" value="' + _e(s.template_url || '') + '" placeholder="' + (s.service_type !== 'xray' ? 'Paste URL (empty = Params)' : 'Paste Google Sheets URL') + '" class="f-inp" style="font-size:11px;font-family:var(--mono);padding:5px 8px;min-width:0;flex:1;" onkeydown="ls_tplKeydown(event,\'' + _e(s.serv_id) + '\')" onfocus="this.select()">'
-          + (s.template_url ? '<button onclick="event.stopPropagation();ls_clearTemplate(\'' + _e(s.serv_id) + '\')" style="width:22px;height:22px;border-radius:5px;background:transparent;border:1px solid var(--border);cursor:pointer;color:var(--text-4);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;" title="Clear URL"><svg width="9" height="9" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"/></svg></button>' : '')
-          + '</div>'
-          + (s.service_type !== 'xray' ? '<div style="font-size:10px;margin-top:3px;color:' + (s.template_url ? 'var(--teal-600)' : 'var(--text-4)') + ';">' + (s.template_url ? '🔗 Using Sheet URL' : '⚙️ Using Params') + '</div>' : '')
-          + '</td>'
           + '<td style="text-align:center;">'
           + '<div style="display:flex;gap:5px;justify-content:center;">'
           + '<button class="btn btn-sm" onclick="event.stopPropagation();lsBranch_open(\'' + _e(s.serv_id) + '\')" style="padding:5px 10px;background:rgba(16,168,168,.1);color:var(--teal-700);border:1px solid rgba(0,96,176,.2);" title="Branch Status">'
           + '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>'
           + ' Branches</button>'
           + (s.service_type !== 'xray'
-            ? '<button class="btn btn-sm" onclick="event.stopPropagation();lsParams_open(\'' + _e(s.serv_id) + '\')" style="padding:5px 10px;background:' + (s.template_url ? 'transparent' : 'rgba(99,102,241,.1)') + ';color:' + (s.template_url ? 'var(--text-3)' : '#6366f1') + ';border:1px solid ' + (s.template_url ? 'var(--border)' : 'rgba(99,102,241,.25)') + ';" title="' + (s.template_url ? 'Configure Parameters (URL mode active)' : 'Configure Parameters') + '">'
+            ? '<button class="btn btn-sm" onclick="event.stopPropagation();lsParams_open(\'' + _e(s.serv_id) + '\')" style="padding:5px 10px;background:rgba(99,102,241,.1);color:#6366f1;border:1px solid rgba(99,102,241,.25);" title="Configure Parameters">'
               + '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"/></svg>'
               + ' Params</button>'
             : '')
@@ -683,7 +669,7 @@
       });
 
       // Spacer between groups
-      h += '<tr><td colspan="7" style="padding:0;height:6px;background:var(--bg);border:none;"></td></tr>';
+      h += '<tr><td colspan="6" style="padding:0;height:6px;background:var(--bg);border:none;"></td></tr>';
     });
 
     document.getElementById('lsTableBody').innerHTML = h;
@@ -857,7 +843,6 @@
     document.getElementById('lsFldName').value = '';
     document.getElementById('lsFldFee').value = '';
     document.getElementById('lsFldSpecimen').value = '';
-    document.getElementById('lsFldTemplateUrl').value = '';
     ls_catDropReset();
     var inp = document.getElementById('lsCatSearch');
     if (inp) { inp.style.borderColor = ''; inp.style.color = ''; inp.style.fontWeight = ''; }
@@ -881,7 +866,6 @@
     document.getElementById('lsFldName').value = s.serv_name || '';
     document.getElementById('lsFldFee').value = s.default_fee || '';
     document.getElementById('lsFldSpecimen').value = s.specimen_type || '';
-    document.getElementById('lsFldTemplateUrl').value = s.template_url || '';
     ls_catDropReset();
     if (s.cat_id && s.cat_name) ls_catDropSelect(s.cat_id, s.cat_name);
     var philVal = s.is_philhealth_covered == 1 ? '1' : '0';
@@ -916,7 +900,6 @@
     if (!fee || isNaN(parseFloat(fee)) || parseFloat(fee) < 0) { ls_showModalErr('Valid fee is required.'); return; }
 
     var catObj = LS.cats.find(function (c) { return c.cat_id === catId; });
-    var templateUrl = document.getElementById('lsFldTemplateUrl').value.trim();
     var payload = {
       serv_id: LS.editingId || '',
       serv_name: name,
@@ -924,7 +907,6 @@
       default_fee: parseFloat(fee),
       specimen_type: specimen,
       is_philhealth_covered: isPhil,
-      template_url: templateUrl,
     };
 
     var snapshot = JSON.parse(JSON.stringify(LS.all));
@@ -1404,46 +1386,6 @@
   function lsParams_removeRow(i) {
     LP.params.splice(i, 1);
     lsParams_render();
-  }
-
-  /* ── Inline Template URL save ── */
-  function ls_tplKeydown(e, servId) {
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    var inp = document.getElementById('ls-tpl-' + servId);
-    if (!inp) return;
-    ls_saveTemplateInline(servId, inp.value.trim());
-  }
-
-  function ls_clearTemplate(servId) {
-    var inp = document.getElementById('ls-tpl-' + servId);
-    if (inp) inp.value = '';
-    ls_saveTemplateInline(servId, '');
-  }
-
-  function ls_saveTemplateInline(servId, url) {
-    var svc = LS.all.find(function (s) { return s.serv_id === servId; });
-    if (!svc) return;
-    var oldUrl = svc.template_url || '';
-    if (url === oldUrl) return;
-    svc.template_url = url;
-    ls_applyFilter();
-    google.script.run
-      .withSuccessHandler(function (r) {
-        if (!r.success) {
-          toast('error', r.message || 'Failed to save URL.');
-          svc.template_url = oldUrl;
-          ls_applyFilter();
-          return;
-        }
-        toast('success', 'Template URL saved.');
-      })
-      .withFailureHandler(function (e) {
-        toast('error', e.message || 'Connection error.');
-        svc.template_url = oldUrl;
-        ls_applyFilter();
-      })
-      .setLabServiceTemplate(servId, url);
   }
 
   function lsParams_save() {

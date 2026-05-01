@@ -298,54 +298,6 @@
       </div>
     </div>
 
-    <!-- ═══════════════════════════════════════════
-         MEDTECH SHEET TEMPLATES — SA/BA only
-    ════════════════════════════════════════════ -->
-    <div class="card" id="bsSectionMedTechTemplates" style="display:none;padding:0;overflow:hidden;">
-      <div style="padding:16px 24px;border-bottom:1px solid var(--border);background:var(--gray-50);display:flex;align-items:center;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="width:36px;height:36px;border-radius:9px;background:rgba(22,163,74,.1);border:1px solid rgba(22,163,74,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg width="17" height="17" fill="none" stroke="#16a34a" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-            </svg>
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:800;color:var(--text-1);">MedTech Sheet Templates</div>
-            <div style="font-size:12px;color:var(--text-3);margin-top:1px;">Attach a Google Sheets template per lab service. Technologists can generate a patient-prefilled copy from the Lab Queue.</div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-sm" id="bsTemplSaveBtn" onclick="bs_saveTemplates()">
-          <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-          </svg>
-          Save Templates
-        </button>
-      </div>
-      <div style="padding:20px 24px;">
-        <!-- Lab Encoding Mode -->
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 16px;background:rgba(22,163,74,.04);border:1.5px solid rgba(22,163,74,.2);border-radius:var(--radius-lg);margin-bottom:16px;">
-          <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text-1);">Lab Result Encoding Mode</div>
-            <div style="font-size:11px;color:var(--text-3);margin-top:2px;">Controls what the technologist sees when encoding a lab result.</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-            <select id="bsLabEncodingMode" class="f-inp" style="width:auto;font-size:12px;cursor:pointer;">
-              <option value="params">Parameter Form — fill results in-app</option>
-              <option value="sheet_template">Sheet Template — generate pre-filled Google Sheet</option>
-            </select>
-            <button class="btn btn-primary btn-sm" style="background:#16a34a;border-color:#16a34a;white-space:nowrap;" onclick="bs_saveLabEncodingMode()">Save</button>
-          </div>
-        </div>
-
-        <div style="font-size:12px;color:var(--text-4);margin-bottom:14px;padding:10px 12px;background:rgba(22,163,74,.05);border:1px solid rgba(22,163,74,.15);border-radius:8px;">
-          Supported placeholders in your sheet: <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{PATIENT_NAME}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{PATIENT_ID}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{AGE}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{SEX}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{ORDER_NO}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{ORDER_DATE}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{DOCTOR}}</code> <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;">{{SERVICE}}</code>
-        </div>
-        <div id="bsTemplList" style="display:flex;flex-direction:column;gap:10px;">
-          <div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px;">Loading services…</div>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <!-- Error banner -->
@@ -378,7 +330,6 @@
     var secXray     = document.getElementById('bsSectionXray');
     var secLab      = document.getElementById('bsSectionLab');
     var secDrive    = document.getElementById('bsSectionDrive');
-    var secTemplates= document.getElementById('bsSectionMedTechTemplates');
     var ownCardX    = document.getElementById('bsXsOwnCard');
     var ownCardL    = document.getElementById('bsLsOwnCard');
 
@@ -386,14 +337,12 @@
       secXray.style.display      = '';
       secLab.style.display       = '';
       secDrive.style.display     = '';
-      secTemplates.style.display = '';
       ownCardX.style.display     = 'none';
       ownCardL.style.display     = 'none';
     } else if (_bsIsRadTech()) {
       secXray.style.display      = '';
       secLab.style.display       = 'none';
       secDrive.style.display     = 'none';
-      secTemplates.style.display = 'none';
       ownCardX.style.display     = '';
       ownCardL.style.display     = 'none';
       // Populate own name
@@ -463,18 +412,16 @@
     document.getElementById('bsContent').style.display  = 'none';
     document.getElementById('bsErr').style.display      = 'none';
 
-    var xrayDone  = false, labDone = false, driveDone = false, techDone = false, templDone = false;
-    var xrayData  = null, labData = null, driveData = null, techData = null, templData = null;
+    var xrayDone  = false, labDone = false, driveDone = false, techDone = false;
+    var xrayData  = null, labData = null, driveData = null, techData = null;
     var needDrive = _bsIsAdmin();
     var needTech  = _bsIsTech();
-    var needTempl = _bsIsAdmin();
 
     if (!needDrive) driveDone = true;
     if (!needTech)  techDone  = true;
-    if (!needTempl) templDone = true;
 
     function tryRender() {
-      if (!xrayDone || !labDone || !driveDone || !techDone || !templDone) return;
+      if (!xrayDone || !labDone || !driveDone || !techDone) return;
       document.getElementById('bsSkeleton').style.display = 'none';
 
       // Radiologist
@@ -504,11 +451,6 @@
           document.getElementById('bsLsOwnLicenseNo').value = techData.license_no  || '';
           _bsSetSigPreview('bsLsOwnSigPreview', techData.signature_url || '');
         }
-      }
-
-      // MedTech templates
-      if (templData && templData.success) {
-        bs_renderTemplates((templData.data || []).filter(function(s) { return s.service_type === 'lab' && !s.is_consultation; }));
       }
 
       _bsApplyRoleView();
@@ -546,64 +488,6 @@
         .withFailureHandler(function(e) { techData = { success: false }; techDone = true; tryRender(); })
         .getTechInfo(APP.user.admin_id);
     }
-
-    if (needTempl) {
-      google.script.run
-        .withSuccessHandler(function(r) { templData = r; templDone = true; tryRender(); })
-        .withFailureHandler(function() { templData = { success: false }; templDone = true; tryRender(); })
-        .getLabServices();
-
-      google.script.run
-        .withSuccessHandler(function(mode) {
-          var sel = document.getElementById('bsLabEncodingMode');
-          if (sel) sel.value = mode || 'params';
-        })
-        .withFailureHandler(function() {})
-        .getLabEncodingMode();
-    }
-  }
-
-  function bs_renderTemplates(services) {
-    var list = document.getElementById('bsTemplList');
-    if (!services.length) {
-      list.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-4);font-size:13px;">No lab services found.</div>';
-      return;
-    }
-    var h = '';
-    services.forEach(function(s) {
-      h += '<div style="display:grid;grid-template-columns:220px 1fr;gap:12px;align-items:center;padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius);background:var(--gray-50);">'
-        + '<div>'
-          + '<div style="font-size:13px;font-weight:700;color:var(--text-1);">' + _e(s.serv_name) + '</div>'
-          + '<div style="font-size:11px;color:var(--text-4);margin-top:2px;">' + _e(s.cat_name || '') + '</div>'
-        + '</div>'
-        + '<input type="url" class="f-inp" data-serv-id="' + _e(s.serv_id) + '" value="' + _e(s.template_url || '') + '" placeholder="Paste Google Sheets URL…" style="font-size:12px;font-family:var(--mono);">'
-        + '</div>';
-    });
-    list.innerHTML = h;
-  }
-
-  function bs_saveTemplates() {
-    var inputs = document.querySelectorAll('#bsTemplList input[data-serv-id]');
-    var templates = [];
-    inputs.forEach(function(inp) {
-      templates.push({ serv_id: inp.getAttribute('data-serv-id'), template_url: inp.value.trim() });
-    });
-    var btn = document.getElementById('bsTemplSaveBtn');
-    btn.disabled = true;
-    btn.textContent = 'Saving…';
-    google.script.run
-      .withSuccessHandler(function(r) {
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save Templates';
-        if (r && r.success) toast('success', 'Sheet templates saved.');
-        else toast('error', (r && r.message) || 'Failed to save templates.');
-      })
-      .withFailureHandler(function(e) {
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save Templates';
-        toast('error', (e && e.message) || 'Connection error.');
-      })
-      .saveLabServiceTemplates(templates);
   }
 
   // ── Signature preview helper ──────────────────────────────
@@ -788,20 +672,6 @@
         .saveLabSignatures(branchId, pathologist);
     }
   }
-
-  // ── Save Lab Encoding Mode ───────────────────────────────
-  function bs_saveLabEncodingMode() {
-    var sel = document.getElementById('bsLabEncodingMode');
-    if (!sel) return;
-    google.script.run
-      .withSuccessHandler(function(r) {
-        if (r && r.success) toast('success', 'Lab encoding mode saved.');
-        else toast('error', (r && r.message) || 'Failed to save.');
-      })
-      .withFailureHandler(function(e) { toast('error', (e && e.message) || 'Connection error.'); })
-      .saveLabEncodingMode(sel.value);
-  }
-
   // ── Save Drive section ───────────────────────────────────
   function bs_saveDrive() {
     var branchId = _bsGetBranchId();

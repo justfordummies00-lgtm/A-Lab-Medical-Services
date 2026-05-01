@@ -336,6 +336,13 @@ function updateLabService(payload) {
     const derivedType = deptData ? deptData.department_type : 'lab';
     const isCon = derivedType === 'consultation' ? 1 : 0;
 
+    // Preserve existing template_url if the payload doesn't include it.
+    // (UI no longer edits template_url in Phase 1+2 cleanup; existing data
+    // stays in the sheet as legacy reference.)
+    var templateUrlValue = Object.prototype.hasOwnProperty.call(payload, 'template_url')
+      ? (payload.template_url || '').trim()
+      : (existing[11] || '');
+
     sh.getRange(rowIdx + 2, 2, 1, 11).setValues([[
       payload.cat_id.trim(),
       payload.serv_name.trim(),
@@ -347,7 +354,7 @@ function updateLabService(payload) {
       new Date(),
       derivedType,
       isCon,
-      (payload.template_url || '').trim()
+      templateUrlValue
     ]]);
 
     cacheBust_('lab_services');
@@ -640,7 +647,11 @@ function getLabServiceParams(servId) {
       if (servRow) templateUrl = String(servRow[11] || '').trim();
     }
 
-    return { success: true, data, template_url: templateUrl, encoding_mode: getSettingValue_('lab_encoding_mode', 'params') };
+    // Phase 1+2 cleanup: Sheet Template mode is removed; always return
+    // 'params' so any stale 'sheet_template' value in lab_encoding_mode is
+    // ignored. template_url is still returned for backwards-compat with
+    // other callers but is no longer surfaced in the UI.
+    return { success: true, data, template_url: templateUrl, encoding_mode: 'params' };
   } catch (e) {
     Logger.log('getLabServiceParams ERROR: ' + e.message);
     return { success: false, message: e.message };
