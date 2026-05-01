@@ -1233,3 +1233,291 @@ function deleteItemResult(branchId, orderId, orderItemId) {
     return { success: false, message: e.message };
   }
 }
+
+// ════════════════════════════════════════════════════════════════
+//  PHASE 3a — PARAMS-ONLY SAVES (no Drive write)
+//
+//  The new Tech Dashboard flow splits "Save & Generate PDF" into two
+//  steps: (1) Save params + mark encoded, then (2) review on the
+//  Preview Result tab and click "Save to Drive" to generate the
+//  combined .docx. The functions below cover step 1 — they persist
+//  the encoded data to the per-order sheet but do NOT touch Drive.
+//
+//  Drive generation is still handled by the existing
+//  generateLabResultsBundle / generateXrayResult helpers, called from
+//  the new generateOrderResultDrive_ orchestrator below (Phase 3b
+//  will rewrite those to build .docx files programmatically from
+//  Template Settings).
+// ════════════════════════════════════════════════════════════════
+
+function saveLabResultParamsOnly(branchId, orderId, orderItemId, servId, servName, params, encodedBy) {
+  try {
+    if (!branchId || !orderId || !orderItemId)
+      return { success: false, message: 'Missing required parameters.' };
+
+    var ss      = getOrderSS_(branchId);
+    var itemSh  = ss.getSheetByName('LAB_ORDER_ITEM');
+    var itemsSh = _getResultItemsSheet_(ss);
+
+    // Ensure raw_values_json column exists on RESULT_ITEMS (col K, idx 10)
+    if (itemsSh.getLastColumn() < 11) {
+      itemsSh.getRange(1, 11).setValue('raw_values_json');
+    }
+
+    var rawJson = JSON.stringify(params || []);
+
+    // Find an existing LAB_DOCX / LAB_PDF row to update (preserving its url
+    // if the tech is re-encoding after a Drive save). Otherwise create a
+    // placeholder row with empty url.
+    var existingRow = getResultItemRowByType_(itemsSh, orderId, orderItemId, ['LAB_DOCX', 'LAB_PDF']);
+    if (existingRow !== -1) {
+      // Keep url + encoded_by intact; refresh the raw_values JSON, label,
+      // unit, and timestamp. Caller may later regenerate the .docx.
+      itemsSh.getRange(existingRow, 4).setValue(servName || 'Lab Result');
+      itemsSh.getRange(existingRow, 6).setValue('LAB_DOCX');
+      itemsSh.getRange(existingRow, 9).setValue(encodedBy || '');
+      itemsSh.getRange(existingRow, 10).setValue(new Date());
+      itemsSh.getRange(existingRow, 11).setValue(rawJson);
+    } else {
+      var rid = 'RI-' + Math.random().toString(16).substr(2, 8).toUpperCase();
+      itemsSh.appendRow([
+        rid, orderId, orderItemId, servName || 'Lab Result',
+        '',           // url — Drive write happens later via Save to Drive
+        'LAB_DOCX', '', '',
+        encodedBy || '', new Date(),
+        rawJson
+      ]);
+    }
+
+    // Mark encoded_at on LAB_ORDER_ITEM
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      ensureItemCols_(itemSh);
+      var iRows = itemSh.getRange(2, 1, itemSh.getLastRow() - 1, 2).getValues();
+      var iIdx  = iRows.findIndex(function (r) {
+        return String(r[0]).trim() === orderItemId && String(r[1]).trim() === orderId;
+      });
+      if (iIdx !== -1) itemSh.getRange(iIdx + 2, 16).setValue(new Date());
+    }
+
+    var progress = _checkOrderProgress_(ss, itemSh, orderId, branchId);
+    return { success: true, order_status: progress.newStatus };
+  } catch (e) {
+    Logger.log('saveLabResultParamsOnly ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+function saveXrayResultParamsOnly(branchId, orderId, orderItemId, servId, servName,
+                                  clinicalData, findings, impression, encodedBy) {
+  try {
+    if (!branchId || !orderId || !orderItemId)
+      return { success: false, message: 'Missing required parameters.' };
+
+    var ss      = getOrderSS_(branchId);
+    var itemSh  = ss.getSheetByName('LAB_ORDER_ITEM');
+    var itemsSh = _getResultItemsSheet_(ss);
+
+    var existingRow = getResultItemRowByType_(itemsSh, orderId, orderItemId, ['XRAY_DOCX', 'XRAY_PDF']);
+    if (existingRow !== -1) {
+      // Update the 3 narrative fields + label + encoded_by; preserve url.
+      itemsSh.getRange(existingRow, 4).setValue(servName || 'X-Ray Result');
+      itemsSh.getRange(existingRow, 6).setValue('XRAY_DOCX');
+      itemsSh.getRange(existingRow, 9).setValue(encodedBy || '');
+      itemsSh.getRange(existingRow, 10).setValue(new Date());
+      itemsSh.getRange(existingRow, 11).setValue('xray');
+      itemsSh.getRange(existingRow, 12).setValue(clinicalData || '');
+      itemsSh.getRange(existingRow, 13).setValue(findings || '');
+      itemsSh.getRange(existingRow, 14).setValue(impression || '');
+    } else {
+      var rid = 'RI-' + Math.random().toString(16).substr(2, 8).toUpperCase();
+      itemsSh.appendRow([
+        rid, orderId, orderItemId, servName || 'X-Ray Result',
+        '',           // url — Drive write happens later via Save to Drive
+        'XRAY_DOCX', '', '',
+        encodedBy || '', new Date(),
+        'xray',
+        clinicalData || '', findings || '', impression || ''
+      ]);
+    }
+
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      ensureItemCols_(itemSh);
+      var iRows = itemSh.getRange(2, 1, itemSh.getLastRow() - 1, 2).getValues();
+      var iIdx  = iRows.findIndex(function (r) {
+        return String(r[0]).trim() === orderItemId && String(r[1]).trim() === orderId;
+      });
+      if (iIdx !== -1) itemSh.getRange(iIdx + 2, 16).setValue(new Date());
+    }
+
+    var progress = _checkOrderProgress_(ss, itemSh, orderId, branchId);
+    return { success: true, order_status: progress.newStatus };
+  } catch (e) {
+    Logger.log('saveXrayResultParamsOnly ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ─── PHASE 3a — ORDER-LEVEL "SAVE TO DRIVE" ORCHESTRATOR ────────
+// Generates the combined lab .docx (via existing generateLabResultsBundle)
+// and per-X-Ray .docx files (via existing saveXrayResultAndPdf logic).
+// Returns a summary the client uses to update the Preview Result tab.
+function generateOrderResultDrive(branchId, orderId, encodedBy) {
+  try {
+    if (!branchId || !orderId)
+      return { success: false, message: 'branchId and orderId required.' };
+
+    var ss      = getOrderSS_(branchId);
+    var itemSh  = ss.getSheetByName('LAB_ORDER_ITEM');
+    var itemsSh = _getResultItemsSheet_(ss);
+    if (!itemSh || itemSh.getLastRow() < 2)
+      return { success: false, message: 'No items found for this order.' };
+
+    var labBundle  = null;
+    var xrayResults = [];
+    var labError   = null;
+    var xrayErrors = [];
+
+    // ── Lab portion: combined .docx via the bundle renderer ──
+    try {
+      labBundle = generateLabResultsBundle(branchId, orderId, encodedBy);
+      if (!labBundle.success) labError = labBundle.message;
+    } catch (e) {
+      labError = e.message;
+    }
+
+    // After the bundle is generated, propagate the bundle URL to every
+    // encoded lab service's RESULT_ITEMS row. This way the per-service
+    // "View Result" button on the Encoding tab opens the same combined
+    // .docx — which is the user-confirmed behavior:
+    // "when i click the result on that 1 service and it is combined
+    //  with the other result, so it will display that result".
+    if (labBundle && labBundle.success && labBundle.docxUrl) {
+      try {
+        var rColsB = Math.max(itemsSh.getLastColumn(), 14);
+        if (itemsSh.getLastRow() >= 2) {
+          var rRowsB = itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, rColsB).getValues();
+          rRowsB.forEach(function (r, idx) {
+            if (String(r[1]).trim() !== orderId) return;
+            var unit = String(r[5]).trim();
+            if (unit !== 'LAB_DOCX' && unit !== 'LAB_PDF') return;
+            // Update the url cell (col 5, 1-indexed) for this row.
+            itemsSh.getRange(idx + 2, 5).setValue(labBundle.docxUrl);
+          });
+        }
+      } catch (e) { Logger.log('generateOrderResultDrive propagate-bundle-url: ' + e.message); }
+    }
+
+    // ── X-Ray portion: one .docx per encoded X-Ray item ──
+    // Each X-Ray service is rendered separately because the layout
+    // (Clinical Data / Findings / Impression) is per-service, not
+    // per-category like lab.
+    var iCols = Math.max(itemSh.getLastColumn(), 16);
+    var iRows = itemSh.getRange(2, 1, itemSh.getLastRow() - 1, iCols).getValues();
+
+    // Loop the RESULT_ITEMS rows where unit is XRAY_DOCX/XRAY_PDF.
+    var rCols = Math.max(itemsSh.getLastColumn(), 14);
+    var rRows = itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, rCols).getValues();
+    rRows.forEach(function (r) {
+      if (String(r[1]).trim() !== orderId) return;
+      var unit = String(r[5]).trim();
+      if (unit !== 'XRAY_DOCX' && unit !== 'XRAY_PDF') return;
+      var orderItemId = String(r[2]).trim();
+      var servName    = String(r[3]).trim();
+      var clinicalData= String(r[11] || '').trim();
+      var findings    = String(r[12] || '').trim();
+      var impression  = String(r[13] || '').trim();
+
+      // Look up serv_id from LAB_ORDER_ITEM (col 2 is order_id, col 0 is order_item_id, serv id at col 2 or 3?)
+      var servId = '';
+      var orderNo = '';
+      var oRow = iRows.find(function (ir) {
+        return String(ir[0]).trim() === orderItemId && String(ir[1]).trim() === orderId;
+      });
+      if (oRow) servId = String(oRow[2] || '').trim();
+
+      try {
+        var xres = saveXrayResultAndPdf(
+          branchId, orderId, orderItemId, servId, servName,
+          clinicalData, findings, impression,
+          encodedBy || String(r[8] || '').trim(),
+          orderNo
+        );
+        if (xres && xres.success) {
+          xrayResults.push({ order_item_id: orderItemId, serv_name: servName, url: xres.docxUrl });
+        } else {
+          xrayErrors.push({ serv_name: servName, message: xres && xres.message });
+        }
+      } catch (e) {
+        xrayErrors.push({ serv_name: servName, message: e.message });
+      }
+    });
+
+    // Re-fetch order status after potential lab/xray updates
+    var progress = _checkOrderProgress_(ss, itemSh, orderId, branchId);
+
+    var ok = (labBundle && labBundle.success) || xrayResults.length > 0;
+    if (!ok) {
+      return {
+        success: false,
+        message: labError || 'No results were saved to Drive. Encode at least one service first.',
+        lab_error: labError,
+        xray_errors: xrayErrors
+      };
+    }
+
+    return {
+      success: true,
+      lab_bundle_url: labBundle && labBundle.success ? labBundle.docxUrl : '',
+      lab_categories: labBundle && labBundle.success ? labBundle.categories : [],
+      lab_error: labError,
+      xray_results: xrayResults,
+      xray_errors: xrayErrors,
+      order_status: progress.newStatus
+    };
+  } catch (e) {
+    Logger.log('generateOrderResultDrive ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
+// ─── PHASE 3a — RESOLVE THE "VIEW RESULT" URL FOR ANY SERVICE ───
+// The new flow stores ONE combined lab .docx per order (LAB_BUNDLE_DOCX
+// row) plus per-X-Ray .docx rows. This helper returns the right URL
+// to open from the per-service "View Result" button on the Encoding tab.
+function getOrderResultUrls(branchId, orderId) {
+  try {
+    if (!branchId || !orderId)
+      return { success: false, message: 'branchId and orderId required.' };
+    var ss = getOrderSS_(branchId);
+    var itemsSh = _getResultItemsSheet_(ss);
+    if (!itemsSh || itemsSh.getLastRow() < 2)
+      return { success: true, lab_bundle_url: '', xray_urls: {}, lab_per_item_urls: {} };
+
+    var rCols = Math.max(itemsSh.getLastColumn(), 14);
+    var rRows = itemsSh.getRange(2, 1, itemsSh.getLastRow() - 1, rCols).getValues();
+    var bundleUrl = '';
+    var xrayUrls = {};
+    var labPerItemUrls = {}; // legacy per-service .docx URLs — fallback only
+
+    rRows.forEach(function (r) {
+      if (String(r[1]).trim() !== orderId) return;
+      var unit = String(r[5]).trim();
+      var url  = String(r[4] || '').trim();
+      if (!url) return;
+      var orderItemId = String(r[2]).trim();
+      if (unit === 'LAB_BUNDLE_DOCX') bundleUrl = url;
+      else if (unit === 'XRAY_DOCX' || unit === 'XRAY_PDF') xrayUrls[orderItemId] = url;
+      else if (unit === 'LAB_DOCX' || unit === 'LAB_PDF')   labPerItemUrls[orderItemId] = url;
+    });
+
+    return {
+      success: true,
+      lab_bundle_url: bundleUrl,
+      xray_urls: xrayUrls,
+      lab_per_item_urls: labPerItemUrls
+    };
+  } catch (e) {
+    Logger.log('getOrderResultUrls ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}

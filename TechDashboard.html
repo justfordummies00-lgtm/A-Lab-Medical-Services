@@ -143,39 +143,86 @@
           </div>
         </div>
 
-        <!-- 2-column Layout for Services and Steps -->
-        <div style="display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:start;">
-          
-          <!-- Left Column: Services -->
-          <div class="card" style="padding:16px 14px;">
-            <div style="font-size:11px;font-weight:800;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-left:4px;">Services</div>
-            <div id="panelOtherServices" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <!-- ── PHASE 3a: Encoding ↔ Preview tabs ─────────────────── -->
+        <div class="card" style="padding:6px;display:flex;gap:4px;">
+          <button id="panelTabBtnEncoding" type="button" class="td-tab-btn td-tab-btn-active" onclick="techdash_switchTab('encoding')">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            Encoding Result
+          </button>
+          <button id="panelTabBtnPreview" type="button" class="td-tab-btn" onclick="techdash_switchTab('preview')">
+            <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:5px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            Preview Result
+          </button>
+        </div>
+
+        <!-- ── ENCODING TAB CONTENT (existing 2-column layout + release card) ── -->
+        <div id="panelEncodingTabContent" style="display:flex;flex-direction:column;gap:14px;">
+
+          <!-- 2-column Layout for Services and Steps -->
+          <div style="display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:start;">
+
+            <!-- Left Column: Services -->
+            <div class="card" style="padding:16px 14px;">
+              <div style="font-size:11px;font-weight:800;color:var(--text-4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px;padding-left:4px;">Services</div>
+              <div id="panelOtherServices" style="display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+
+            <!-- Right Column: Encoding Results -->
+            <div class="card" style="padding:16px 20px;">
+              <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Encoding Results</div>
+              <div id="panelSteps" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;"></div>
+              <div id="panelEncodeSection"></div>
+            </div>
           </div>
 
-          <!-- Right Column: Encoding Results -->
-          <div class="card" style="padding:16px 20px;">
-            <div style="font-size:11px;font-weight:800;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;">Encoding Results</div>
-            <div id="panelSteps" style="display:flex;flex-direction:column;gap:12px;margin-bottom:16px;"></div>
-            <div id="panelEncodeSection"></div>
+          <!-- Release button (shown when FOR_RELEASE) -->
+          <div id="panelReleaseCard" style="display:none;" class="card">
+            <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+              <div>
+                <div style="font-size:13px;font-weight:700;color:var(--text-1);">✅ Results are ready for release</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px;">All items encoded. Open the Preview Result tab, save to Drive, then release to patient.</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-secondary" type="button" onclick="techdash_switchTab('preview')">
+                  <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                  Open Preview Result
+                </button>
+                <button class="btn btn-primary" id="panelReleaseBtn" onclick="techdash_releaseOrder()">Release to Patient</button>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Release button (shown when FOR_RELEASE) -->
-        <div id="panelReleaseCard" style="display:none;" class="card">
-          <div style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-            <div>
-              <div style="font-size:13px;font-weight:700;color:var(--text-1);">✅ Results are ready for release</div>
-              <div style="font-size:11px;color:var(--text-3);margin-top:2px;">All items encoded. Generate a combined report, then release to patient.</div>
-            </div>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <button class="btn btn-secondary" id="panelBundleBtn" onclick="techdash_generateLabBundle()" title="Combine all param-mode lab results into one DOCX, grouped by category">
-                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 20h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                Generate Combined Report
+        <!-- ── PREVIEW RESULT TAB CONTENT ───────────────────────── -->
+        <div id="panelPreviewTabContent" style="display:none;flex-direction:column;gap:12px;">
+          <!-- Action bar: Save to Drive / Edit / Print -->
+          <div class="card" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;" id="panelPreviewCatTabs"></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn btn-secondary" type="button" onclick="techdash_switchTab('encoding')" title="Back to encoding">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                Edit
               </button>
-              <button class="btn btn-primary" id="panelReleaseBtn" onclick="techdash_releaseOrder()">Release to Patient</button>
+              <button class="btn btn-secondary" type="button" onclick="techdash_printPreview()" title="Print preview">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                Print
+              </button>
+              <button class="btn btn-primary" id="panelSaveToDriveBtn" type="button" onclick="techdash_saveToDrive()" title="Generate the combined .docx and save it to the patient's Drive folder">
+                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 17l4 4 4-4m-4-5v9M20.88 18.09A5 5 0 0018 9h-1.26A8 8 0 103 16.29"/></svg>
+                Save to Drive
+              </button>
             </div>
           </div>
-          <div id="panelBundleResult" style="display:none;padding:0 20px 14px;font-size:11px;color:var(--text-2);"></div>
+
+          <!-- Save-to-Drive result strip -->
+          <div id="panelSaveToDriveResult" style="display:none;" class="card">
+            <div style="padding:12px 16px;font-size:11px;color:var(--text-2);"></div>
+          </div>
+
+          <!-- Smart preview render -->
+          <div id="panelPreviewArea" style="display:flex;justify-content:center;">
+            <div style="padding:40px;text-align:center;color:var(--text-4);font-size:12px;">Select an order to load the preview.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -248,6 +295,31 @@
   }
   .step-num.done { background: #16a34a; color: #fff; }
   .step-num.pending { background: var(--gray-100); color: var(--text-3); border: 1.5px solid var(--border); }
+
+  /* ── Phase 3a: Encoding ↔ Preview tab buttons ── */
+  .td-tab-btn {
+    flex: 1;
+    padding: 9px 14px;
+    border-radius: 6px;
+    border: 1.5px solid transparent;
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .12s;
+  }
+  .td-tab-btn:hover { background: var(--gray-50); color: var(--text-1); }
+  .td-tab-btn-active,
+  .td-tab-btn-active:hover {
+    background: var(--teal-600);
+    color: #fff;
+    border-color: var(--teal-600);
+    box-shadow: 0 2px 4px rgba(13,148,136,.25);
+  }
 
   .td-encode-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .td-encode-table th { padding: 6px 8px; background: var(--gray-50); font-weight: 700; color: var(--text-3); text-align: left; border-bottom: 1.5px solid var(--border); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
@@ -453,6 +525,11 @@ function techdash_selectOrder(orderId) {
   TDASH.selectedItem = null;
   TDASH.selectedOrderItems = [];
   TDASH.selectedOrder = TDASH.allOrders.find(function(o){ return o.order_id === orderId; }) || null;
+  TDASH._previewData = null;
+  TDASH._previewActiveCat = null;
+  techdash_switchTab('encoding');
+  var sd = document.getElementById('panelSaveToDriveResult');
+  if (sd) sd.style.display = 'none';
   techdash_renderQueue();
 
   document.getElementById('techPanelEmpty').style.display = 'none';
@@ -841,9 +918,9 @@ function techdash_buildLabForm(container, item, borderStyle, existingPdf, params
       html += '</div>'
         + '<div id="labEncodeErr_' + iid + '" style="display:none;margin-top:8px;font-size:11px;color:var(--danger);background:var(--danger-bg);border-radius:6px;padding:6px 10px;"></div>'
         + '<div style="display:flex;justify-content:flex-end;margin-top:12px;">'
-        + '<button id="labSaveBtn_' + iid + '" class="btn btn-primary"' + disabled + ' onclick="techdash_saveLabResult(\'' + iid + '\')">'
+        + '<button id="labSaveBtn_' + iid + '" class="btn btn-primary"' + disabled + ' onclick="techdash_saveLabResult(\'' + iid + '\')" title="Save result fields. Generate the .docx from the Preview Result tab.">'
         + '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>'
-        + ' Save &amp; Generate PDF</button>'
+        + ' Save</button>'
         + '</div>';
     }
   }
@@ -989,9 +1066,8 @@ function techdash_saveLabResult(itemId) {
   var errEl = document.getElementById('labEncodeErr_' + itemId);
   if (errEl) errEl.style.display = 'none';
 
-  var params   = (TDASH._labParams && TDASH._labParams[itemId]) || [];
-  var results  = [];
-  var hasError = false;
+  var params  = (TDASH._labParams && TDASH._labParams[itemId]) || [];
+  var results = [];
 
   params.forEach(function(p, idx) {
     var ft  = p.field_type || 'numeric';
@@ -1013,13 +1089,14 @@ function techdash_saveLabResult(itemId) {
   var item = TDASH.selectedOrderItems.find(function(i){ return i.order_item_id === itemId; });
   if (!item) return;
 
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating PDF…'; }
+  var btnHtml = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
   var encodedBy = APP.user ? APP.user.admin_id : '';
 
   google.script.run
     .withSuccessHandler(function(r) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save &amp; Generate PDF'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
       if (!r || !r.success) {
         if (errEl) { errEl.textContent = r && r.message ? r.message : 'Save failed.'; errEl.style.display = ''; }
         return;
@@ -1028,19 +1105,19 @@ function techdash_saveLabResult(itemId) {
       var ord = TDASH.allOrders.find(function(o){ return o.order_id === TDASH.selectedOrderId; });
       if (ord && r.order_status) ord.status = r.order_status;
       techdash_renderItemChips();
-      techdash_renderServicePanel();
       techdash_renderQueue();
       if (ord && ord.status === 'FOR_RELEASE') document.getElementById('panelReleaseCard').style.display = '';
-      toast('success', 'Lab result saved and PDF generated!');
+      toast('success', 'Lab result saved. Review it on the Preview Result tab.');
+      // Auto-switch to Preview Result tab so the tech can review and Save to Drive
+      techdash_switchTab('preview');
     })
     .withFailureHandler(function(e) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save &amp; Generate PDF'; }
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
       if (errEl) { errEl.textContent = e.message || 'Error.'; errEl.style.display = ''; }
     })
-    .saveLabResultAndPdf(
+    .saveLabResultParamsOnly(
       TDASH.branchId, TDASH.selectedOrderId, itemId,
-      item.serv_id, item.lab_name, results, encodedBy,
-      TDASH.selectedOrder ? TDASH.selectedOrder.order_no : ''
+      item.serv_id, item.lab_name, results, encodedBy
     );
 }
 
@@ -1090,9 +1167,9 @@ function techdash_renderXrayEncoding(container, item, borderStyle) {
           + '</div>'
           + '<div id="xrayErr_' + _e(iid) + '" style="display:none;font-size:11px;color:var(--danger);background:var(--danger-bg);border-radius:6px;padding:6px 10px;"></div>'
           + '<div style="display:flex;justify-content:flex-end;">'
-          + '<button id="xraySaveBtn_' + _e(iid) + '" class="btn btn-primary" onclick="techdash_saveXrayResult(\'' + _e(iid) + '\')">'
+          + '<button id="xraySaveBtn_' + _e(iid) + '" class="btn btn-primary" onclick="techdash_saveXrayResult(\'' + _e(iid) + '\')" title="Save result fields. Generate the .docx from the Preview Result tab.">'
           + '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>'
-          + ' Save &amp; Generate PDF</button>'
+          + ' Save</button>'
           + '</div>'
           + '</div>';
       }
@@ -1131,33 +1208,35 @@ function techdash_saveXrayResult(itemId) {
   if (!impression) { if (errEl) { errEl.textContent = 'Impression is required.'; errEl.style.display = ''; } return; }
 
   if (errEl) errEl.style.display = 'none';
-  if (btn)   { btn.disabled = true; btn.textContent = 'Generating PDF…'; }
+
+  var btnHtml = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
   var item     = TDASH.selectedOrderItems.find(function(i) { return i.order_item_id === itemId; });
-  var order    = TDASH.selectedOrder;
   var encodedBy = APP.user ? APP.user.admin_id : '';
 
   google.script.run
     .withSuccessHandler(function(r) {
       if (!r || !r.success) {
-        if (btn)  { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save &amp; Generate PDF'; }
-        if (errEl) { errEl.textContent = r.message || 'Generation failed.'; errEl.style.display = ''; }
+        if (btn)  { btn.disabled = false; btn.innerHTML = btnHtml; }
+        if (errEl) { errEl.textContent = (r && r.message) || 'Save failed.'; errEl.style.display = ''; }
         return;
       }
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
       if (item) item.encoded_at = new Date().toISOString();
       var ord = TDASH.allOrders.find(function(o) { return o.order_id === TDASH.selectedOrderId; });
       if (ord && r.order_status) ord.status = r.order_status;
       techdash_renderItemChips();
-      techdash_renderServicePanel();
       techdash_renderQueue();
       if (ord && ord.status === 'FOR_RELEASE') document.getElementById('panelReleaseCard').style.display = '';
-      toast('success', 'X-Ray result saved and PDF generated!');
+      toast('success', 'X-Ray result saved. Review it on the Preview Result tab.');
+      techdash_switchTab('preview');
     })
     .withFailureHandler(function(e) {
-      if (btn)  { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg> Save &amp; Generate PDF'; }
+      if (btn)  { btn.disabled = false; btn.innerHTML = btnHtml; }
       if (errEl) { errEl.textContent = e.message || 'Error.'; errEl.style.display = ''; }
     })
-    .saveXrayResultAndPdf(
+    .saveXrayResultParamsOnly(
       TDASH.branchId,
       TDASH.selectedOrderId,
       itemId,
@@ -1166,8 +1245,7 @@ function techdash_saveXrayResult(itemId) {
       cdEl ? cdEl.value.trim() : '',
       findings,
       impression,
-      encodedBy,
-      order ? order.order_no : ''
+      encodedBy
     );
 }
 
@@ -1181,41 +1259,6 @@ function techdash_printPdf(url) {
 function techdash_markDirty(itemId) {
   TDASH.draftDirty[itemId] = true;
   techdash_renderItemChips();
-}
-
-function techdash_generateLabBundle() {
-  if (!TDASH.selectedOrderId) return;
-  var btn = document.getElementById('panelBundleBtn');
-  var resDiv = document.getElementById('panelBundleResult');
-  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
-  var encodedBy = APP.user ? APP.user.admin_id : '';
-  google.script.run
-    .withSuccessHandler(function (r) {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 20h10a2 2 0 002-2V6a2 2 0 00-2-2H7a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg> Generate Combined Report'; }
-      if (!r || !r.success) {
-        toast('error', (r && r.message) || 'Failed to generate combined report.');
-        return;
-      }
-      if (resDiv) {
-        var catsHtml = (r.categories || []).map(function (c) { return '<span style="display:inline-block;padding:2px 8px;margin:0 4px 4px 0;border-radius:10px;background:rgba(16,168,168,.08);color:var(--teal-600);font-weight:600;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">' + c + '</span>'; }).join('');
-        var skipHtml = '';
-        if (r.skipped_sheet_template && r.skipped_sheet_template.length) {
-          skipHtml = '<div style="margin-top:6px;color:var(--text-3);">Note: ' + r.skipped_sheet_template.length + ' service(s) with Sheet templates are kept separately (they use spreadsheet formulas).</div>';
-        }
-        resDiv.style.display = '';
-        resDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-          + '<span style="font-weight:700;color:var(--text-1);">Combined report ready:</span>'
-          + catsHtml
-          + '<a href="' + r.docxUrl + '" target="_blank" class="btn btn-primary btn-sm" style="margin-left:auto;">Open DOCX</a>'
-          + '</div>' + skipHtml;
-      }
-      toast('success', 'Combined lab report generated.');
-    })
-    .withFailureHandler(function (e) {
-      if (btn) { btn.disabled = false; btn.innerHTML = 'Generate Combined Report'; }
-      toast('error', e.message || 'Error.');
-    })
-    .generateLabResultsBundle(TDASH.branchId, TDASH.selectedOrderId, encodedBy);
 }
 
 function techdash_releaseOrder() {
@@ -1235,5 +1278,275 @@ function techdash_releaseOrder() {
     })
     .withFailureHandler(function(e){ toast('error', e.message || 'Error.'); })
     .releaseOrder(TDASH.branchId, TDASH.selectedOrderId, releasedBy);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════
+   PHASE 3a — Encoding Result ↔ Preview Result tabs
+   The Preview tab embeds the same smart renderer used by the
+   stand-alone Lab Results Preview page. "Save to Drive" generates
+   a single combined .docx for the whole order; the URL is stored
+   on every encoded service row.
+   ═══════════════════════════════════════════════════════════════ */
+function techdash_switchTab(name) {
+  var encEl  = document.getElementById('panelEncodingTabContent');
+  var prvEl  = document.getElementById('panelPreviewTabContent');
+  var encBtn = document.getElementById('panelTabBtnEncoding');
+  var prvBtn = document.getElementById('panelTabBtnPreview');
+  if (!encEl || !prvEl || !encBtn || !prvBtn) return;
+
+  if (name === 'preview') {
+    encEl.style.display = 'none';
+    prvEl.style.display = 'flex';
+    encBtn.classList.remove('td-tab-btn-active');
+    prvBtn.classList.add('td-tab-btn-active');
+    techdash_loadPreview();
+  } else {
+    prvEl.style.display = 'none';
+    encEl.style.display = 'flex';
+    prvBtn.classList.remove('td-tab-btn-active');
+    encBtn.classList.add('td-tab-btn-active');
+  }
+}
+
+function techdash_loadPreview() {
+  if (!TDASH.selectedOrderId || !TDASH.branchId) return;
+  var area = document.getElementById('panelPreviewArea');
+  if (!area) return;
+
+  area.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text-4);font-size:12px;">'
+    + '<span class="spinner spinner-teal" style="display:inline-block;width:18px;height:18px;border-width:2px;"></span>'
+    + '<br>Loading preview…</div>';
+
+  // Ensure template settings are loaded (the lrp_renderCategoryPage
+  // reads from window.LRP.templateSettings).
+  if (!window.LRP) window.LRP = { templateSettings: {} };
+  var tsLoaded = !!(window.LRP.templateSettings && Object.keys(window.LRP.templateSettings).length);
+
+  function fetchPreview() {
+    google.script.run
+      .withSuccessHandler(function(r) {
+        if (!r || !r.success) {
+          area.innerHTML = '<div class="card" style="padding:20px 16px;text-align:center;color:var(--text-3);font-size:12px;">'
+            + (r && r.message ? _e(r.message) : 'No encoded results yet for this order.<br>Save a service in the Encoding Result tab first.')
+            + '</div>';
+          var tabs = document.getElementById('panelPreviewCatTabs');
+          if (tabs) tabs.innerHTML = '';
+          return;
+        }
+        TDASH._previewData = r;
+        techdash_renderPreviewCatTabs();
+        techdash_renderPreviewPages();
+      })
+      .withFailureHandler(function(e) {
+        area.innerHTML = '<div class="card" style="padding:20px 16px;text-align:center;color:var(--danger);font-size:12px;">'
+          + 'Error: ' + _e((e && e.message) || 'Failed to load preview.') + '</div>';
+      })
+      .getLabPreviewData(TDASH.branchId, TDASH.selectedOrderId);
+  }
+
+  if (tsLoaded) {
+    fetchPreview();
+  } else {
+    google.script.run
+      .withSuccessHandler(function(r) {
+        window.LRP.templateSettings = (r && r.success && r.data) ? r.data : {};
+        fetchPreview();
+      })
+      .withFailureHandler(function() {
+        window.LRP.templateSettings = {};
+        fetchPreview();
+      })
+      .getTemplateSettings(TDASH.branchId);
+  }
+}
+
+function techdash_renderPreviewCatTabs() {
+  var tabsEl = document.getElementById('panelPreviewCatTabs');
+  if (!tabsEl) return;
+  var d = TDASH._previewData || {};
+  var cats  = d.categories  || [];
+  var xrays = d.xray_items  || [];
+
+  var html = '';
+  if (cats.length || xrays.length) {
+    html += '<button type="button" class="lrp-cat-tab' + (!TDASH._previewActiveCat ? ' active' : '') + '" onclick="techdash_filterPreviewCat(null)">All</button>';
+    cats.forEach(function(c) {
+      var act = TDASH._previewActiveCat === c.cat_id;
+      html += '<button type="button" class="lrp-cat-tab' + (act ? ' active' : '') + '" onclick="techdash_filterPreviewCat(\'' + _e(c.cat_id) + '\')">' + _e(c.category_name) + '</button>';
+    });
+    if (xrays.length) {
+      var act = TDASH._previewActiveCat === '__XRAY__';
+      html += '<button type="button" class="lrp-cat-tab' + (act ? ' active' : '') + '" onclick="techdash_filterPreviewCat(\'__XRAY__\')">X-Ray</button>';
+    }
+  }
+  tabsEl.innerHTML = html;
+}
+
+function techdash_filterPreviewCat(catId) {
+  TDASH._previewActiveCat = catId;
+  techdash_renderPreviewCatTabs();
+  techdash_renderPreviewPages();
+}
+
+function techdash_renderPreviewPages() {
+  var area = document.getElementById('panelPreviewArea');
+  if (!area) return;
+  var d = TDASH._previewData;
+  if (!d) return;
+
+  var html = '';
+  var activeCat = TDASH._previewActiveCat;
+
+  // Lab category pages — reuse the existing smart renderer.
+  if (typeof lrp_splitCategoryServices === 'function' && typeof lrp_renderCategoryPage === 'function') {
+    (d.categories || []).forEach(function(cat) {
+      if (activeCat && activeCat !== cat.cat_id) return;
+      var pages = lrp_splitCategoryServices(cat);
+      pages.forEach(function(pageCat) {
+        html += lrp_renderCategoryPage(pageCat, d.patient, d.signatures);
+      });
+    });
+  }
+
+  // X-Ray pages
+  if (!activeCat || activeCat === '__XRAY__') {
+    (d.xray_items || []).forEach(function(xi) {
+      html += techdash_renderXrayPage(xi, d.patient, d.xray_signatures);
+    });
+  }
+
+  if (!html) {
+    html = '<div class="card" style="padding:24px 16px;text-align:center;color:var(--text-4);font-size:12px;">No results to display for this filter.</div>';
+  }
+  // Wrap in lrpPrintArea so the existing LRP @media print styles apply
+  area.innerHTML = '<div id="lrpPrintArea">' + html + '</div>';
+}
+
+function techdash_renderXrayPage(xi, patient, sig) {
+  var p   = patient || {};
+  var s   = sig     || {};
+  var ts  = (window.LRP && window.LRP.templateSettings) || {};
+  var html = '<div class="lrp-page" data-cat="__XRAY__">';
+
+  if (ts.header_image_url) {
+    html += '<div style="text-align:center;margin-bottom:10px;"><img src="' + _e(ts.header_image_url) + '" style="max-width:100%;max-height:100px;object-fit:contain;" onerror="this.style.display=\'none\'"></div>';
+  }
+
+  html += '<div class="lrp-header">'
+    + '<div class="lrp-header-left">'
+    + '<div><span class="lrp-header-label">Patient\'s Name:</span> <strong>' + _e(p.name || '') + '</strong></div>'
+    + '<div><span class="lrp-header-label">Birthdate:</span> ' + _e(p.birthdate || '') + '</div>'
+    + '<div><span class="lrp-header-label">Physician:</span> ' + _e(p.physician || '') + '</div>'
+    + '</div>'
+    + '<div class="lrp-header-right">'
+    + '<div><span class="lrp-header-label">Age:</span> ' + _e(p.age || '') + '</div>'
+    + '<div><span class="lrp-header-label">Sex:</span> ' + _e(p.sex || '') + '</div>'
+    + '<div><span class="lrp-header-label">Date:</span> ' + _e(p.date || '') + '</div>'
+    + '</div>'
+    + '</div>';
+
+  html += '<div class="lrp-title-banner">X-RAY EXAMINATION</div>';
+  html += '<div style="font-weight:800;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:#222;margin:6px 0 12px;text-align:center;">' + _e(xi.serv_name || '') + '</div>';
+
+  if (xi.clinical_data) {
+    html += '<div style="margin-bottom:14px;">'
+      + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#333;margin-bottom:4px;">Clinical Data</div>'
+      + '<div style="font-size:12px;line-height:1.6;color:#222;white-space:pre-wrap;">' + _e(xi.clinical_data) + '</div>'
+      + '</div>';
+  }
+  html += '<div style="margin-bottom:14px;">'
+    + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#333;margin-bottom:4px;">Findings</div>'
+    + '<div style="font-size:12px;line-height:1.6;color:#222;white-space:pre-wrap;">' + _e(xi.findings || '') + '</div>'
+    + '</div>';
+  html += '<div style="margin-bottom:14px;">'
+    + '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#333;margin-bottom:4px;">Impression</div>'
+    + '<div style="font-size:12px;line-height:1.6;color:#222;white-space:pre-wrap;">' + _e(xi.impression || '') + '</div>'
+    + '</div>';
+
+  // Bottom section pushed down by flexbox (.lrp-bottom-section + .lrp-page being column flex)
+  html += '<div class="lrp-bottom-section">';
+
+  html += '<div class="lrp-signatures">';
+  html += '<div class="lrp-sig-block">';
+  if (s.radiologist_signature_url) {
+    html += '<img src="' + _e(s.radiologist_signature_url) + '" style="max-height:36px;object-fit:contain;margin-bottom:-4px;" onerror="this.style.display=\'none\'">';
+  }
+  html += '<div class="lrp-sig-line"></div>'
+    + '<div class="lrp-sig-name">' + _e(s.radiologist_name || '') + '</div>'
+    + '<div class="lrp-sig-title">Radiologist' + (s.radiologist_cred ? ', ' + _e(s.radiologist_cred) : '') + '</div>'
+    + (s.radiologist_license_no ? '<div class="lrp-sig-license">Lic. No. ' + _e(s.radiologist_license_no) + '</div>' : '')
+    + '</div>';
+  html += '</div>';
+
+  if (ts.clinical_disclaimer_note) {
+    html += '<div class="lrp-footer"><strong>Note:</strong> ' + _e(ts.clinical_disclaimer_note) + '</div>';
+  }
+  if (ts.page_footer_text) {
+    html += '<div class="lrp-page-footer">' + _e(ts.page_footer_text).replace(/\n/g, '<br>') + '</div>';
+  }
+  html += '</div>'; // .lrp-bottom-section
+  html += '</div>'; // .lrp-page
+  return html;
+}
+
+function techdash_printPreview() {
+  // Reuse the existing LRP print styles which target #lrpPrintArea.
+  if (!document.getElementById('lrpPrintArea')) {
+    toast('error', 'Nothing to print.');
+    return;
+  }
+  window.print();
+}
+
+function techdash_saveToDrive() {
+  if (!TDASH.selectedOrderId || !TDASH.branchId) return;
+  var btn    = document.getElementById('panelSaveToDriveBtn');
+  var resDiv = document.getElementById('panelSaveToDriveResult');
+  var btnHtml = '<svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="margin-right:4px;vertical-align:-2px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 17l4 4 4-4m-4-5v9M20.88 18.09A5 5 0 0018 9h-1.26A8 8 0 103 16.29"/></svg> Save to Drive';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving to Drive…'; }
+  var encodedBy = APP.user ? APP.user.admin_id : '';
+
+  google.script.run
+    .withSuccessHandler(function(r) {
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+      if (!r || !r.success) {
+        if (resDiv) {
+          resDiv.style.display = '';
+          resDiv.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--danger);">'
+            + _e((r && r.message) || 'Failed to save to Drive.') + '</div>';
+        }
+        toast('error', (r && r.message) || 'Failed to save to Drive.');
+        return;
+      }
+      if (resDiv) {
+        var bits = [];
+        if (r.lab_bundle_url) {
+          bits.push('<a href="' + _e(r.lab_bundle_url) + '" target="_blank" class="btn btn-primary btn-sm">Open Lab Result .docx</a>');
+        }
+        (r.xray_results || []).forEach(function(x) {
+          if (x.url) bits.push('<a href="' + _e(x.url) + '" target="_blank" class="btn btn-secondary btn-sm">' + _e(x.serv_name || 'X-Ray') + ' .docx</a>');
+        });
+        var errMsg = '';
+        if (r.errors && r.errors.length) {
+          errMsg = '<div style="margin-top:6px;color:var(--warning);font-size:11px;">⚠ ' + _e(r.errors.join('; ')) + '</div>';
+        }
+        resDiv.style.display = '';
+        resDiv.innerHTML = '<div style="padding:12px 16px;font-size:11px;color:var(--text-2);">'
+          + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+          + '<span style="font-weight:700;color:var(--text-1);">Saved to patient folder:</span>'
+          + bits.join('')
+          + '</div>' + errMsg
+          + '</div>';
+      }
+      toast('success', 'Result saved to Drive.');
+      // Refresh encoding side so the per-service "Result Ready" cards pick up the new URL.
+      if (TDASH.selectedItem) techdash_renderServicePanel();
+    })
+    .withFailureHandler(function(e) {
+      if (btn) { btn.disabled = false; btn.innerHTML = btnHtml; }
+      toast('error', (e && e.message) || 'Error saving to Drive.');
+    })
+    .generateOrderResultDrive(TDASH.branchId, TDASH.selectedOrderId, encodedBy);
 }
 </script>
