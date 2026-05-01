@@ -1008,6 +1008,122 @@ function getPatientOrderHistory(branchId, patientId, includeArchived) {
   }
 }
 
+// ── GET PATIENT ORDERS WITH RESULTS ───────────────────────────
+// Returns ALL orders for the patient (any status, including pending
+// and unencoded) with each line item annotated with whether a result
+// has been encoded and, if so, the Drive URL of the auto-generated
+// result file.  Powers the Patients page "Order History / Result"
+// tab where each service row shows a [View →] button that opens the
+// existing Drive Doc/PDF in a new browser tab.
+//
+// We only surface URLs whose unit is one of LAB_DOCX / LAB_PDF /
+// XRAY_DOCX / XRAY_PDF — those are written by ResultTemplatesCode
+// when a tech encodes a result and represent the final printable
+// document the user wants to view.
+function getPatientOrdersWithResults(branchId, patientId, includeArchived) {
+  try {
+    if (!branchId || !patientId) return { success: false, message: 'Missing params.' };
+    const ss     = getOrderSS_(branchId);
+    const ordSh  = ss.getSheetByName('LAB_ORDER');
+    const itemSh = ss.getSheetByName('LAB_ORDER_ITEM');
+    const rSh    = ss.getSheetByName('RESULT_ITEMS');
+
+    if (!ordSh || ordSh.getLastRow() < 2) return { success: true, data: [] };
+
+    const ordCols = Math.max(ordSh.getLastColumn(), 24);
+    const orders = ordSh.getRange(2, 1, ordSh.getLastRow() - 1, ordCols).getValues()
+      .filter(r => r[0] && String(r[3]).trim() === patientId)
+      .filter(r => includeArchived || String(r[6]).trim() !== 'ARCHIVED')
+      .map(r => ({
+        order_id:       String(r[0]).trim(),
+        order_no:       String(r[1]).trim(),
+        order_date:     r[5] ? new Date(r[5]).toISOString().split('T')[0] : '',
+        status:         String(r[6]).trim(),
+        doctor_name:    String(r[12] || '').trim(),
+        net_amount:     Number(r[14]) || 0,
+        order_types:    String(r[21] || 'lab').trim() || 'lab',
+        payment_status: String(r[23] || 'UNPAID').trim() || 'UNPAID',
+        items:          []
+      }));
+
+    if (!orders.length) return { success: true, data: [] };
+
+    const orderIds = new Set(orders.map(o => o.order_id));
+    const orderMap = {};
+    orders.forEach(o => { orderMap[o.order_id] = o; });
+
+    const itemMap = {};
+    if (itemSh && itemSh.getLastRow() >= 2) {
+      const itemCols = Math.max(itemSh.getLastColumn(), 16);
+      itemSh.getRange(2, 1, itemSh.getLastRow() - 1, itemCols).getValues()
+        .filter(r => r[0] && orderIds.has(String(r[1]).trim()))
+        .forEach(r => {
+          const item = {
+            item_id:      String(r[0]).trim(),
+            serv_id:      String(r[2]).trim(),
+            serv_name:    String(r[3]).trim(),
+            service_type: String(r[15] || 'lab').trim(),
+            encoded:      false,
+            encoded_at:   '',
+            encoded_by:   '',
+            result_url:   '',
+            result_kind:  ''
+          };
+          itemMap[item.item_id] = item;
+          if (orderMap[String(r[1]).trim()]) {
+            orderMap[String(r[1]).trim()].items.push(item);
+          }
+        });
+    }
+
+    if (rSh && rSh.getLastRow() >= 2) {
+      const rCols = Math.max(rSh.getLastColumn(), 14);
+      // Prefer the most recent encoded result row per item — older
+      // rows can linger if a tech re-encoded.
+      const byItem = {};
+      rSh.getRange(2, 1, rSh.getLastRow() - 1, rCols).getValues()
+        .filter(r => r[0] && itemMap[String(r[2]).trim()])
+        .forEach(r => {
+          const itemId = String(r[2]).trim();
+          const at     = r[9] ? new Date(r[9]).getTime() : 0;
+          if (!byItem[itemId] || at >= byItem[itemId]._at) {
+            byItem[itemId] = {
+              _at:      at,
+              value:    String(r[4] || '').trim(),
+              unit:     String(r[5] || '').trim(),
+              by:       String(r[8] || '').trim(),
+              at_iso:   r[9] ? new Date(r[9]).toISOString() : ''
+            };
+          }
+        });
+      Object.keys(byItem).forEach(itemId => {
+        const ri  = byItem[itemId];
+        const item = itemMap[itemId];
+        item.encoded    = true;
+        item.encoded_at = ri.at_iso;
+        item.encoded_by = ri.by;
+        // Only LAB_DOCX / LAB_PDF / XRAY_DOCX / XRAY_PDF rows store
+        // a printable Drive URL in result_value; numeric/text-only
+        // encodings leave result_url empty so the UI shows
+        // "Released — no link" instead of a dead button.
+        const unit = ri.unit.toUpperCase();
+        if (/^(LAB|XRAY)_(DOCX|PDF)$/.test(unit) && /^https?:\/\//i.test(ri.value)) {
+          item.result_url  = ri.value;
+          item.result_kind = unit.toLowerCase();
+        }
+      });
+    }
+
+    orders.sort((a, b) => b.order_date.localeCompare(a.order_date) ||
+                          b.order_no.localeCompare(a.order_no));
+    Logger.log('getPatientOrdersWithResults: ' + branchId + ' / ' + patientId + ' → ' + orders.length);
+    return { success: true, data: orders };
+  } catch (e) {
+    Logger.log('getPatientOrdersWithResults ERROR: ' + e.message);
+    return { success: false, message: e.message };
+  }
+}
+
 // ── GET BRANCH PATIENTS (patient search in wizard) ────────────
 function getBranchPatients(branchId, query) {
   try {
